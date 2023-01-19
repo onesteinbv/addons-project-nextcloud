@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_nextcloud_sync_all,access.nextcloud.sync.all,model_nextcloud_sync,base.group_user,1,1,1,1
+access_run_sync_test_wizard,access.run.sync.test.wizard,model_run_sync_test_wizard,base.group_user,1,1,1,1

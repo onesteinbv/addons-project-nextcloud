@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>	
+	<!-- NextCloud Sync List View -->
+	<record id="nextcloud_sync_tree_view" model="ir.ui.view">
+		<field name="name">nextcloud.sync.tree.view</field>
+		<field name="model">nextcloud.sync</field>
+		<field name="arch" type="xml">
+			<tree string="Nextcloud Sync Tree">
+				<field name="hostname"/>
+				<field name="username"/>
+				<field name="password"/>
+			</tree>
+		</field>
+	</record>
+   	
+   	<!-- NextCloud Sync Form View -->
+	<record id="nextcloud_sync_form_view" model="ir.ui.view">
+		<field name="name">nextcloud.sync.form.view</field>
+		<field name="model">nextcloud.sync</field>
+		<field name="arch" type="xml">
+			<form string="Nextcloud Sync Form">
+				<sheet>				
+					<group>
+						<group>
+							<field name="name"/>
+							<field name="hostname"/>
+							<field name="api_url"/>
+							<field name="event_count"/>
+						</group>
+						<group>
+							<field name="username"/>
+							<field name="password"/>
+							<field name="json_output"/>
+							<label for="calendar_event_id"/>
+							<div class="o_row">
+							    <field name="calendar_event_id"/>
+							    <button name="create_next_cloud_event" type="object" string="Sync Event to Next Cloud"/>
+							</div>
+						</group>
+					</group>
+					<group>
+						<table width="100%">
+						  	<tr>
+								<td><button name="test_webdav" string="Connect WebDav" type="object"/></td>
+								<td>Test Webdav connection. Returns list of user information</td>
+							</tr>
+							<tr>
+								<td><button name="test_caldav" string="Connect CalDav" type="object"/></td>
+								<td>Test Caldav connection. Returns list of calendar information</td>
+							</tr>
+							<tr>
+								<td><button name="create_odoo_events" string="Create Odoo Events" type="object"/></td>
+								<td>Creates <field name="event_count_display" readonly="1"/> Odoo event records. Returns the duration of the process</td>
+							</tr>
+							<tr>
+								<td><button name="create_nextcloud_events" string="Create Nextcloud Events" type="object"/></td>
+								<td>Creates <field name="event_count_display" readonly="1"/> Nextcloud event records. Returns the duration of the process</td>
+							</tr>
+							<tr>
+								<td><button name="load_all_nextcloud_events" string="Get Nextcloud Events" type="object"/></td>
+								<td>Loads all Nextcloud event records. Returns the duration of the process</td>
+							</tr>
+							<tr>
+								<td><button name="delete_all_nextcloud_events" string="Delete all Nextcloud Events" type="object"/></td>
+								<td>Deletes all Nextcloud event records. Returns the duration of the process</td>
+							</tr>
+							<tr>
+								<td><button name="delete_all_odoo_events" string="Delete all Odoo Events" type="object"/></td>
+								<td>Deletes all Odoo event records. Returns the duration of the process</td>
+							</tr>
+							<tr>
+								<td><button name="sync_cron_test" string="Sync cron test" type="object"/></td>
+								<td>Initial Sync Cron test</td>
+							</tr>
+						</table>
+					</group>
+					<group>
+						<div class="alert alert-info" role="alert">
+						  	<span>
+						  		<field name="result_log" nolabel="1" readonly="1"/>
+						  	</span>
+						</div>
+					</group>
+				</sheet>
+			</form>
+		</field>
+	</record>
+   	
+   	<!-- NextCloud Sync Action -->
+	<record id="action_nextcloud_sync" model="ir.actions.act_window">
+		<field name="name">Sync Test</field>
+		<field name="res_model">nextcloud.sync</field>
+		<field name="view_mode">tree,form</field>
+	</record>
+	
+	<menuitem
+		id="menu_main_nextcloud_test"
+		name="Sync Test"
+		parent="nextcloud_odoo_sync.menu_main_nextcloud"
+		action="action_nextcloud_sync"
+		sequence="10"/>
+</odoo>

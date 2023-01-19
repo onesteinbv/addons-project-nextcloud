@@ -1,0 +1,23 @@
+<odoo>
+	<data>
+		<record id="calendar_event_form_view" model="ir.ui.view">
+	        <field name="name">calendar.event.form.view</field>
+	        <field name="model">calendar.event</field>
+	        <field name="inherit_id" ref="calendar.view_calendar_event_form"/>
+	        <field name="arch" type="xml">
+				<xpath expr="//page[@name='page_invitations']" position="after">
+				     <page name="nextcloud_page" string="Nextcloud" groups="base.group_no_one">
+				     	<group>
+				     		<field name="nc_uid" string="UID"/>
+					     	<field name="nc_calendar_hash" string="Calendar Hash"/>
+					     	<field name="nc_status" string="Status"/>
+					     	<field name="nc_color" String="Color"/>
+					     	<field name="nc_resources" string="Resources"/>
+					     	<field name="nc_calendar_ids" string="Calendar" widget="many2many_tags"/>
+				     	</group>
+				     </page>
+				</xpath>
+	      	</field>
+		</record>
+	</data>
+</odoo>

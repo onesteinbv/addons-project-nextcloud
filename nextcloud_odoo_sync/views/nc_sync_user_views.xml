@@ -1,0 +1,66 @@
+<odoo>
+	<data>
+		<record id="nc_sync_user_tree_view" model="ir.ui.view">
+			<field name="name">nc.sync.user.tree.view</field>
+			<field name="model">nc.sync.user</field>
+			<field name="arch" type="xml">
+				<tree string="Nextcloud Sync User Tree">
+					<field name="user_id" string="Odoo User"/>
+					<field name="nextcloud_user_id" string="NextCloud User ID"/>
+					<field name="user_name" string="NextCloud Username"/>
+					<field name="sync_calendar"/>
+				</tree>
+			</field>
+		</record>
+		
+		<record id="nc_sync_user_form_view" model="ir.ui.view">
+			<field name="name">nc.sync.user.form.view</field>
+			<field name="model">nc.sync.user</field>
+			<field name="arch" type="xml">
+				<form string="Nextcloud Sync User Form">
+					<sheet>
+						<div class="oe_title">
+	                        <div>
+	                            <label for="user_id" string="Odoo User"/>
+	                        </div>
+	                        <h3>
+	                            <field name="user_id"/>
+	                        </h3>
+	                    </div>	
+						<group>
+							<group>
+								<field name="user_name" string="NextCloud Username"/>
+								<field name="sync_calendar"/>
+							</group>
+							<group>
+								<field name="nextcloud_user_id" string="NextCloud User ID"/>
+							</group>
+						</group>
+					</sheet>
+				</form>
+			</field>
+		</record>
+		
+		<record id="action_nextcloud_sync_user" model="ir.actions.act_window">
+			<field name="name">User Setup</field>
+			<field name="res_model">nc.sync.user</field>
+			<field name="view_mode">tree,form</field>
+		</record>
+		
+		<menuitem name="Nextcloud Sync" id="menu_main_nextcloud" 
+			sequence="1" web_icon="nextcloud_odoo_sync,static/description/menu_icon.png"/>
+		
+		<menuitem
+			id="menu_main_nextcloud_config"
+			name="Configuration"
+			parent="menu_main_nextcloud"
+			sequence="50"/>
+			
+		<menuitem
+			id="menu_main_nextcloud_sync_user"
+			name="User Setup"
+			parent="menu_main_nextcloud_config"
+			sequence="1"
+			action="action_nextcloud_sync_user"/>
+	</data>
+</odoo>
