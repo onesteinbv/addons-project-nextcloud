@@ -14,6 +14,7 @@
 					     	<field name="nc_color" String="Color"/>
 					     	<field name="nc_resources" string="Resources"/>
 					     	<field name="nc_calendar_ids" string="Calendar" widget="many2many_tags"/>
+					     	<field name="nc_synced" string="Synced"/>
 				     	</group>
 				     </page>
 				</xpath>

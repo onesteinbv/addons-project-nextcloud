@@ -14,3 +14,9 @@ class CalendarEvent(models.Model):
     nc_color = fields.Char()
     nc_resources = fields.Many2one('resource.resource')
     nc_calendar_ids = fields.Many2many('nc.calendar')
+    nc_synced = fields.Boolean()
+    
+    def write(self, vals):
+        if not self._context.get('sync', False):
+            vals['nc_synced'] = False
+        return super(CalendarEvent, self).write(vals)

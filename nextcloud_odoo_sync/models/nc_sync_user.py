@@ -13,3 +13,4 @@ class NcsyncUser(models.Model):
     nextcloud_user_id = fields.Char()
     user_name = fields.Char()
     sync_calendar = fields.Boolean(default=True)
+    user_events_hash = fields.Text()
