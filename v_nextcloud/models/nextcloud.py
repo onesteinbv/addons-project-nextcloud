@@ -42,61 +42,7 @@ class NextcloudSync(models.Model):
 
     def sync_cron_test(self):
         for rec in self:
-            start_time = ttime.perf_counter()
-            config_obj = rec.env['ir.config_parameter']
-            caldav_api_credentials = {
-                'url': config_obj.sudo().get_param('nextcloud_odoo_sync.nextcloud_url') + '/remote.php/dav',
-                'username': config_obj.sudo().get_param('nextcloud_odoo_sync.nextcloud_login'),
-                'pw': config_obj.sudo().get_param('nextcloud_odoo_sync.nextcloud_password'),
-                'enabled': config_obj.sudo().get_param('nextcloud_odoo_sync.enable_calendar_sync')
-            }
-            sync_log_id = rec.env['nc.sync.log'].create({
-                'name': datetime.now().strftime('%Y%m%d-%H%M%S'),
-                'date_start': datetime.now(),
-                'state': 'connecting',
-                'next_cloud_url': caldav_api_credentials['url'],
-                'odoo_url': self.env['ir.config_parameter'].sudo().get_param('web.base.url')
-            })
-            rec.env.cr.commit()
-            
-            caldav_api_credentials_copy = caldav_api_credentials.copy()
-            caldav_api_credentials_copy.update({'pw': '*****'})
-            connection = False
-            if caldav_api_credentials['enabled']:
-                connection = rec.env['nextcloud.caldav'].check_nextcloud_connection(url=caldav_api_credentials['url'], username=caldav_api_credentials['username'], password=caldav_api_credentials['pw'])
-
-                sync_log_id.line_ids.create({
-                    'log_id': sync_log_id.id,
-                    'operation_type': 'login',
-                    'data_send': caldav_api_credentials_copy,
-                    'response_description': connection.get('response_description') if isinstance(connection, dict) else str(connection),
-                    'error_code_id': connection.get('sync_error_id').id if isinstance(connection, dict) else False,
-                    'severity': connection.get('sync_error_id').severity if isinstance(connection, dict) else 'info'
-                })
-            else:
-                sync_log_id.line_ids.create({
-                    'log_id': sync_log_id.id,
-                    'operation_type': 'login',
-                    'data_send': caldav_api_credentials_copy,
-                    'response_description': 'Calendar Sync not enabled',
-                    'error_code_id': False,
-                    'severity': 'info'
-                })
-            
-            if isinstance(connection, dict) and connection.get('sync_error_id'):
-                sync_log_id.write({'state': 'failed', 'date_end': datetime.now()})
-            else:
-                sync_log_id.write({'state': 'ok', 'date_end': datetime.now()})
-            
-            errors = sync_log_id.line_ids.filtered(lambda x: x.severity in ['error', 'critical'])
-            warnings = sync_log_id.line_ids.filtered(lambda x: x.severity in ['warning'])
-            infos = sync_log_id.line_ids.filtered(lambda x: not x.severity or x.severity in ['info'])
-            sync_log_id.description = f'{len(errors)} Error(s), {len(warnings)} Warning(s) and {len(infos)} Info(s)'
-            
-            end_time = ttime.perf_counter()
-            elapsed = end_time - start_time
-            duration = round(elapsed, 2)
-            sync_log_id.duration = self.convert_readable_time_duration(duration)
+            rec.env['nextcloud.caldav'].sync_cron()
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
