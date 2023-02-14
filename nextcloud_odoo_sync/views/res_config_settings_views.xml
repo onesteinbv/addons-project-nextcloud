@@ -19,32 +19,32 @@
                                     	<div class="content-group">
                                             <div class="mt8 row">
                                                 <label for="nextcloud_url" class="col-3 col-lg-3"/>
-                                                <field name="nextcloud_url"/>
+                                                <field name="nextcloud_url" attrs="{'required':[('enable_calendar_sync','=',True)]}"/>
                                             </div>
                                         </div>
                                         <div class="content-group">
                                             <div class="mt8 row">
                                                 <label for="nextcloud_login" class="col-3 col-lg-3"/>
-                                                <field name="nextcloud_login"/>
+                                                <field name="nextcloud_login" attrs="{'required':[('enable_calendar_sync','=',True)]}"/>
                                             </div>
                                         </div>
                                         <div class="content-group">
                                             <div class="mt8 row">
                                                 <label for="nextcloud_password" class="col-3 col-lg-3"/>
-                                                <field name="nextcloud_password"/>
+                                                <field name="nextcloud_password" password="True" attrs="{'required':[('enable_calendar_sync','=',True)]}"/>
                                             </div>
                                         </div>
                                         <div class="content-group">
                                             <div class="mt8 row">
                                                 <label for="nextcloud_connection_status" class="col-3 col-lg-3"/>
-                                                <field name="nextcloud_connection_status"/>
+                                                <field name="nextcloud_connection_status" readonly="1"/>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="col-12 col-lg-6 o_setting_box" id="invite_users_setting" attrs="{'invisible': [('nextcloud_connection_status', '!=', 'fail')]}">
                                     <div class="o_setting_right_pane">
-                                        <field name="nextcloud_error" placeholer="Error"/>
+                                        <field name="nextcloud_error" placeholer="Error" readonly="1"/>
                                     </div>
                                 </div>
                             </div>
