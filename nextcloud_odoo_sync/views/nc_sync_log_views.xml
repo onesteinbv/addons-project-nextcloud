@@ -5,11 +5,11 @@
 			<field name="model">nc.sync.log</field>
 			<field name="arch" type="xml">
 				<tree string="Nextcloud Sync Log Tree" create="0" edit="0" decoration-danger="state in ('failed', 'error')" default_order="date_start desc">
-					<field name="name" string="Sync code"/>
+					<field name="name"/>
 					<field name="state"/>
 					<field name="description"/>
-					<field name="date_start" string="Start"/>
-					<field name="date_end" string="End"/>
+					<field name="date_start"/>
+					<field name="date_end"/>
 					<field name="duration"/>
 				</tree>
 			</field>
@@ -22,7 +22,7 @@
 				<form string="Nextcloud Sync Log Form" create="0" edit="0">
 					<div class="oe_title">
                         <div>
-                            <label for="name" string="Sync Code"/>
+                            <label for="name"/>
                         </div>
                         <h3>
                             <field name="name"/>
@@ -31,24 +31,25 @@
 					<group>
 						<group>
 							<field name="state"/>
-							<field name="odoo_url" string="Odoo URL"/>
-							<field name="date_start" string="Start"/>
+							<field name="odoo_url"/>
+							<field name="date_start"/>
 							<field name="duration"/>
 						</group>
 						<group>
 							<field name="description"/>
-							<field name="next_cloud_url" string="NextCloud URL"/>
-							<field name="date_end" string="End"/>
+							<field name="next_cloud_url"/>
+							<field name="date_end"/>
 						</group>
 						<field name="line_ids" readonly="1">
 							<tree decoration-danger="severity in ('error', 'critical')">
+								<field name="create_date" string="Date"/>
 								<field name="severity"/>
 								<field name="operation_type"/>
 								<field name="error_code_id"/>
 								<field name="response_description"/>
 								<field name="data_send"/>
-								<field name="prev_value" string="Previous Value"/>
-								<field name="new_value"/>
+								<field name="prev_value" optional="hide"/>
+								<field name="new_value" optional="hide"/>
 							</tree>
 						</field>
 					</group>

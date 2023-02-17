@@ -11,4 +11,6 @@ from . import nc_sync_log
 from . import nc_sync_error
 from . import nc_calendar
 from . import nc_event_status
+from . import res_users
+from . import res_partner
 from . import res_config_settings

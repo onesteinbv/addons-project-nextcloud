@@ -25,7 +25,6 @@ EVENT_COUNT = 1000  # Indicate the number of event to create
 
 class NextcloudSync(models.Model):
     _name = 'nextcloud.sync'
-    _inherit = ['nextcloud.base']
     _description = 'Next Cloud Sync'
 
     name = fields.Char('Name', required=True)
@@ -91,7 +90,7 @@ class NextcloudSync(models.Model):
         for rec in self:
             nextcloud_caldav_obj = self.env['nextcloud.caldav']
             calendar_event_ids = nextcloud_caldav_obj.set_caldav_record(calendar_events)
-            
+
             with caldav.DAVClient(url=rec.hostname + '/remote.php/dav', username=rec.username, password=rec.password) as client:
                 my_principal = client.principal()
                 calendar_obj = my_principal.calendar(name="Personal")
@@ -225,6 +224,7 @@ class NextcloudSync(models.Model):
             start_time = ttime.time()
 
             rec.calendar_event_id.search([], limit=rec.event_count).write({'active': False})
+            rec.env['nc.sync.user'].search([]).write({'user_events_hash': False})
 
             end_time = ttime.time()
             elapsed = end_time - start_time
