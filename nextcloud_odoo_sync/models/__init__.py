@@ -6,6 +6,7 @@ from . import nextcloud_base
 from . import nextcloud_webdav
 from . import nextcloud_caldav
 from . import calendar_event
+from . import calendar_recurrence
 from . import nc_sync_user
 from . import nc_sync_log
 from . import nc_sync_error

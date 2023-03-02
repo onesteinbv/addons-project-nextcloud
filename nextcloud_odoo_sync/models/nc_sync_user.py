@@ -2,23 +2,34 @@
 # Copyright (c) 2023 iScale Solutions Inc.
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+
+import hashlib
+import json
+from datetime import datetime
 from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError
+from odoo.addons.nextcloud_odoo_sync.models import jicson
 
 
 class NcSyncUser(models.Model):
     _name = 'nc.sync.user'
+    _inherit = ['nextcloud.caldav']
+    _description = 'Nextcloud Sync User'
 
-    user_id = fields.Many2one('res.users', 'Odoo User', default=lambda self: self.env.user.id)
     name = fields.Char('Odoo Username', related='user_id.name')
     nextcloud_user_id = fields.Char('Nextcloud User ID')
     user_name = fields.Char('Username')
-    sync_calendar = fields.Boolean('Sync Calendar', default=True)
-    user_events_hash = fields.Text('Event Hash')
     nc_password = fields.Char('Password')
-    nc_calendar_id = fields.Many2one('nc.calendar', 'Default Nextcloud Calendar')
-    user_has_calendar = fields.Boolean('User has calendar')
     user_message = fields.Char(default='"Default Calendar" field will be used as your default odoo calendar when creating new events')
+    user_events_hash = fields.Text('Event Hash')
+
+    user_id = fields.Many2one('res.users', 'Odoo User', default=lambda self: self.env.user.id)
+    partner_id = fields.Many2one('res.partner', 'Partner', related='user_id.partner_id', store=True)
+    nc_calendar_id = fields.Many2one('nc.calendar', 'Default Nextcloud Calendar')
+    nc_hash_ids = fields.One2many('calendar.event.nchash', 'nc_sync_user_id', 'Hash Values')
+
+    user_has_calendar = fields.Boolean('User has calendar')
+    sync_calendar = fields.Boolean('Sync Calendar', default=True)
 
     @api.constrains('user_id')
     def check_user_exist(self):
@@ -51,6 +62,9 @@ class NcSyncUser(models.Model):
         return super(NcSyncUser, self).write(vals)
 
     def get_user_connection(self):
+        """
+        This method returns the connection and principal object from Nextcloud server
+        """
         params = {'nextcloud_login': 'Login', 'nextcloud_password': 'Password', 'nextcloud_url': 'Server URL'}
         for item in params:
             value = self.env['ir.config_parameter'].sudo().get_param('nextcloud_odoo_sync.%s' % item)
@@ -69,11 +83,9 @@ class NcSyncUser(models.Model):
         for record in nc_calendars:
             nc_calendar_id = self.nc_calendar_id.search([('user_id', '=', self.user_id.id), ('name', '=', record.name), ('calendar_url', '=', record.canonical_url)], limit=1)
             if not nc_calendar_id:
-                result.append({
-                    'name': record.name,
-                    'user_id': self.user_id.id,
-                    'calendar_url': record.canonical_url
-                })
+                result.append({'name': record.name,
+                               'user_id': self.user_id.id,
+                               'calendar_url': record.canonical_url})
         if result:
             self.user_has_calendar = True
             self.nc_calendar_id.create(result)
@@ -84,16 +96,14 @@ class NcSyncUser(models.Model):
     def check_nc_connection(self):
         connection, connection_principal = self.sudo().get_user_connection()
         self.sudo().get_user_calendars(connection_principal)
-        return {
-            'name': 'NextCloud User Setup',
-            'view_mode': 'form',
-            'res_model': 'nc.sync.user',
-            'view_id': self.env.ref('nextcloud_odoo_sync.nc_sync_user_form_view').id,
-            'type': 'ir.actions.act_window',
-            'context': {'pop_up': True},
-            'target': 'new',
-            'res_id': self.id
-        }
+        return {'name': 'NextCloud User Setup',
+                'view_mode': 'form',
+                'res_model': 'nc.sync.user',
+                'view_id': self.env.ref('nextcloud_odoo_sync.nc_sync_user_form_view').id,
+                'type': 'ir.actions.act_window',
+                'context': {'pop_up': True},
+                'target': 'new',
+                'res_id': self.id}
 
     def unlink(self):
         if self.user_id:
@@ -101,3 +111,88 @@ class NcSyncUser(models.Model):
             if nc_calendar_ids:
                 nc_calendar_ids.unlink()
         return super(NcSyncUser, self).unlink()
+
+    def get_event_data(self, event):
+        """
+        This method returns the following data of an event: UID, hash, dictionary of event values
+        :param event: Calendar event object
+        :return dictionary of event values
+        """
+        vevent = jicson.fromText(event.data).get('VCALENDAR')[0].get('VEVENT')
+        data = []
+        # Remove the DTSTAMP values as it always changes when event get queried from Nextcloud
+        for d in vevent:
+            nc_uid = d['UID']
+            d.pop('DTSTAMP')
+            d.pop('SEQUENCE', False)
+            exdate_key = [k for k, v in d.items() if 'EXDATE' in k]
+            if isinstance(event.vobject_instance.vevent.dtstart.value, datetime):
+                date_format = '%Y%m%dT%H%M%S'
+            else:
+                date_format = '%Y%m%d'
+            if exdate_key:
+                tz = False
+                if 'TZID' in exdate_key[0]:
+                    tz = exdate_key[0].split('=')[1]
+                d.pop(exdate_key[0])
+                d['exdates'] = [x.value[0].strftime(date_format) for x in event.vobject_instance.vevent.exdate_list]
+                d['exdate_tz'] = tz
+            data.append(d)
+        vals = {'data': data}
+        vals['uid'] = nc_uid
+        json_data = str(json.dumps(vals['data'], sort_keys=True)).encode('utf-8')
+        vals['hash'] = hashlib.sha1(json_data).hexdigest()
+        return vals
+
+    def get_all_user_events(self, **params):
+        """
+        This method get all user events in both Odoo and Nextcloud                
+        :param log_id: single recordset of nc.sync.log model
+        :params **params: dictionary of multiple recordsets from different models
+        """
+        events = params['all_odoo_event_ids']
+        log_obj = params['log_obj']
+        result = {'od_events': [], 'nc_events': [], 'connection': False, 'principal': False}
+        for user in self:
+            if not events:
+                events = self.env['calendar.event'].sudo().search([])
+            try:
+                connection, principal = self.get_user_connection()
+                result['principal'] = principal
+                result['connection'] = connection
+            except Exception as error:
+                if log_obj:
+                    log_obj.log_event('error', error=error, message='Nextcloud:')
+                    return result
+                else:
+                    raise ValidationError(_(error))
+            try:
+                # Get all Odoo events where the user is the organizer or one of the attendee
+                od_event_ids = events.filtered(lambda x: x.user_id == user.user_id or
+                                               (x.partner_ids and user.partner_id in x.partner_ids.ids))
+                for event in od_event_ids:
+                    event_hash = False
+                    if event.nc_hash_ids:
+                        event_hash = event.nc_hash_ids.filtered(lambda x: x.nc_sync_user_id == user).mapped('nc_event_hash')
+                    result['od_events'].append({'nc_uid': event.nc_uid, 'od_event': event,
+                                                'event_hash': event_hash[0] if event_hash else False})
+                # Get all Nextcloud events of the user
+                for calendar in principal.calendars():
+                    # Check if calendar exist for the user and make sure it has the same name as the Nextcloud calendar
+                    # in case the user rename it in Nextcloud, otherwise create a new one if not exist
+                    nc_calendar_id = self.nc_calendar_id.search([('user_id', '=', self.user_id.id), ('calendar_url', '=', calendar.canonical_url)], limit=1)
+                    if nc_calendar_id:
+                        if calendar.name != nc_calendar_id:
+                            nc_calendar_id.name = calendar.name
+                    else:
+                        self.env['nc.calendar'].sudo().create({'name': calendar.name, 'user_id': user.user_id.id, 'calendar_url': calendar.canonical_url})
+                    for item in calendar.events():
+                        event_vals = user.get_event_data(item)
+                        result['nc_events'].append({'nc_uid': event_vals['uid'], 'event_hash': event_vals['hash'], 'nc_event': event_vals['data'], 'nc_caldav': item})
+                return result
+            except Exception as error:
+                if log_obj:
+                    log_obj.log_event('error', error=error, message='Nextcloud:')
+                    return result
+                else:
+                    raise ValidationError(_(error))

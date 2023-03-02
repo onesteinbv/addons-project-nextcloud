@@ -21,7 +21,7 @@
         </record>
         
         <record id="run_sync_test_confirm_message_wizard" model="ir.actions.act_window">
-            <field name="name">Sync Test</field>
+            <field name="name">Run Sync</field>
             <field name="type">ir.actions.act_window</field>
             <field name="res_model">run.sync.test.wizard</field>
             <field name="view_mode">form</field>

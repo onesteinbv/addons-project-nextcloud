@@ -1,29 +1,13 @@
 <odoo>
 	<data>
-		<!-- Inherit calendar.event search -->
-		<record id="calendar_event_search_view" model="ir.ui.view">
-	        <field name="name">calendar.event.search.view</field>
-	        <field name="model">calendar.event</field>
-	        <field name="inherit_id" ref="calendar.view_calendar_event_search"/>
-	        <field name="arch" type="xml">
-	        	<field name="partner_ids" position="before">
-	        		<field name="nc_calendar_id"/>
-	        	</field>	        	
-	        </field>
-		</record>
-	
 		<!-- Inherit calendar.event tree -->
 		<record id="calendar_event_tree_view" model="ir.ui.view">
 	        <field name="name">calendar.event.tree.view</field>
 	        <field name="model">calendar.event</field>
 	        <field name="inherit_id" ref="calendar.view_calendar_event_tree"/>
 	        <field name="arch" type="xml">
-	        	<field name="partner_ids" position="before">
-	        		<field name="nc_calendar_id" optional="show"/>
-	        	</field>
 	        	<field name="description" position="after">
 	        		<field name="nc_uid" optional="hide"/>
-	        		<field name="nc_calendar_hash" optional="hide"/>
 	        	</field>
 	        </field>
 		</record>
@@ -37,15 +21,25 @@
 				<xpath expr="//page[@name='page_invitations']" position="after">
 				    <page name="nextcloud_page" string="Nextcloud" groups="base.group_no_one">
 				     	<group>
-				     		<field name="nc_uid"/>
-					     	<field name="nc_calendar_hash"/>
-					     	<field name="nc_color"/>
-					     	<field name="nc_resources"/>
-					     	<field name="nc_synced"/>
-					     	<field name="nc_to_delete"/>
-					     	<field name="nc_allday"/>
-				     	</group>
-				    </page>
+				     		<group string="Additional Fields">					     		
+						     	<field name="nc_color"/>
+						     	<field name="nc_resources"/>
+						     	<field name="nc_synced"/>
+						     	<field name="nc_to_delete"/>
+						     	<field name="nc_allday"/>
+					     	</group>
+					     	<group string="Hash Values">
+					     		<field name="nc_uid"/>
+					     		<field name="nc_rid"/>
+					     		<field name="nc_hash_ids" colspan="2" nolabel="1">
+					     			<tree>
+					     				<field name="nc_sync_user_id"/>
+					    				<field name="nc_event_hash"/>
+					     			</tree>
+					     		</field>
+					     	</group>
+				     	</group>				     	
+				    </page>				    
 				</xpath>
 				<field name="start_date" position="before">			
 					<label for="nc_calendar_select" attrs="{'invisible':[('nc_require_calendar','=',False)]}"/>

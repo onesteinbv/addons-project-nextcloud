@@ -17,25 +17,35 @@
 			<field name="model">nc.sync.user</field>
 			<field name="arch" type="xml">
 				<form string="Nextcloud Sync User Form">
+					<header>
+						<button name="get_all_user_events" type="object" string="Get Events" groups="base.group_no_one"/>
+					</header>
 					<sheet>
 						<div class="oe_title" invisible="context.get('pop_up', False)">
 	                        <div>
-	                            <label for="user_id"/>
+	                            <label for="user_id" class="oe_edit_only"/>
 	                        </div>
-	                        <h3>
+	                        <h1>
 	                            <field name="user_id"/>
-	                        </h3>
+	                        </h1>
 	                    </div>	
 						<group>
 							<group>
 								<field name="user_name"/>
-							</group>
-							<group>
 								<field name="nc_password" password="True"/>
+							</group>
+							<group>								
 								<field name="sync_calendar"/>
 								<field name="nextcloud_user_id" invisible="1"/>
 							</group>
 						</group>
+						<field name="user_events_hash" groups="base.group_no_one"/>
+						<field name="nc_hash_ids" readonly="1" colspan="2" nolabel="1" groups="base.group_no_one">
+			     			<tree>
+			     				<field name="calendar_event_id"/>
+			    				<field name="nc_event_hash"/>
+			     			</tree>
+			     		</field>
 					</sheet>
 					<footer invisible="context.get('no_footer',False)">
 						<button name="check_nc_connection" string="Login to Nextcloud" type="object" class="btn btn-primary"/>

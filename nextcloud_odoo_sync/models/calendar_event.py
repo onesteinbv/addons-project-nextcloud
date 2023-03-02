@@ -2,6 +2,10 @@
 # Copyright (c) 2023 iScale Solutions Inc.
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import pytz
+import ast
+import datetime
+from dateutil.parser import parse
 from odoo import api, models, fields, _
 from odoo.exceptions import ValidationError
 
@@ -16,25 +20,44 @@ class CalendarEvent(models.Model):
             [values.append((x.id, x.name)) for x in nc_calendar_ids]
         return values
 
-    nc_uid = fields.Char(string="UID")
-    nc_calendar_hash = fields.Char(string="Calendar Hash")
+    nc_uid = fields.Char('UID')
+    nc_rid = fields.Char('RECURRENCE-ID', compute='_compute_nc_rid', store=True)
     nc_color = fields.Char(string="Color")
-    nc_calendar_id = fields.Many2one('nc.calendar', 'Nextcloud Calendar', compute='_compute_nc_calendar')
+
     nc_calendar_select = fields.Selection(_get_nc_calendar_selection, string='Nextcloud Calendar',
                                           help='Select which Nextcloud Calendar the event will be recorded into')
+
+    nc_calendar_id = fields.Many2one('nc.calendar', 'Nextcloud Calendar', compute='_compute_nc_calendar')
     nc_status = fields.Many2one('nc.event.status', string="Status")
     nc_resources = fields.Many2one('resource.resource', string="Resources")
     nc_calendar_ids = fields.Many2many('nc.calendar', string='Calendars')
+    nc_hash_ids = fields.One2many('calendar.event.nchash', 'calendar_event_id', 'Hash Values')
+
     nc_require_calendar = fields.Boolean(compute='_compute_nc_require_calendar')
-    nc_synced = fields.Boolean(string="Synced")
-    nc_to_delete = fields.Boolean(string="To Delete")
-    nc_allday = fields.Boolean(string="Nextcloud All day")
+    nc_synced = fields.Boolean('Synced')
+    nc_to_delete = fields.Boolean('To Delete')
+    nc_allday = fields.Boolean('Nextcloud All day')
+    nc_detach = fields.Boolean('Detach from recurring event')
 
     @api.model
     def default_get(self, fields):
         res = super(CalendarEvent, self).default_get(fields)
         res['privacy'] = 'private'
         return res
+
+    @api.depends('recurrence_id')
+    def _compute_nc_rid(self):
+        """
+        This method generates a value for RECURRENCE-ID of Nextcloud recurring event
+        """
+        for event in self:
+            if event.recurrence_id and not event.nc_rid:
+                if not event.allday:
+                    event.nc_rid = event.start.strftime('%Y%m%dT%H%M%S')
+                else:
+                    event.nc_rid = event.start.strftime('%Y%m%d')
+            else:
+                event.nc_rid = False
 
     @api.depends('duration', 'partner_ids')
     def _compute_nc_require_calendar(self):
@@ -85,41 +108,96 @@ class CalendarEvent(models.Model):
                 new_calendar_ids.append(calendar_id.id)
                 self.nc_calendar_ids = [(6, 0, new_calendar_ids)]
 
-    @api.constrains('user_id', 'name', 'start', 'stop', 'start_date', 'stop_date')
-    def check_duplicate(self):
-        for event in self:
-            fields = ['name', 'start', 'stop', 'start_date', 'stop_date']
-            domain = [('id', '!=', event.id), ('user_id', '=', event.user_id.id)]
-            [domain.append(('%s' % key, '=', event[key])) for key in fields]
-            duplicate_id = self.search(domain)
-            if duplicate_id:
-                raise ValidationError(_('An existing event named %s with the same date and attendees already exist' % event.name))
+    def check_duplicate(self, user_id, vals, events):
+        """
+        This method is use to check if duplicate events exist
+        :param user_id, integer, record id of the user in res.users model
+        :param vals, dictionary, event values to create
+        :param events, recordset of calendar.event
+        """
+        fields = ['name', 'start', 'stop', 'start_date', 'stop_date']
+        partner_id = self.env['res.users'].browse(user_id).partner_id
+        duplicate = False
+        for event in events:
+            event = self.search([('id', '=', event.id), ('nc_to_delete', '=', True)])
+            if event:
+                duplicate = True
+                for field in fields:
+                    if field in vals and field in event and vals[field] and event[field] and vals[field] != event[field]:
+                        duplicate = False
+                        break
+                if duplicate and event.partner_ids and partner_id.id not in event.partner_ids.ids:
+                    duplicate = False
+        return duplicate
 
     @api.model
     def create(self, vals):
+        # Handle untitled event since Nextcloud event can be saved without title
+        if 'name' not in vals or not vals['name']:
+            vals['name'] = 'Untitled event'
         if 'allday' in vals:
             vals['nc_allday'] = vals['allday']
-        # Set default calendar event to private
+        # Set default calendar event to private. Nextcloud event are not viewable by Nextcloud admin
+        # unlike the case with Odoo, so we need to mimic the same functionality
         if 'privacy' not in vals or not vals['privacy']:
             vals['privacy'] = 'private'
+        if 'nc_status' not in vals or not vals['nc_status']:
+            vals['nc_status'] = self.env.ref('nextcloud_odoo_sync.nc_event_status_confirmed').id
         res = super(CalendarEvent, self).create(vals)
         if 'nc_calendar_ids' not in vals:
             # Check if a value for calendar exist for the user:
             nc_sync_user_id = self.env['nc.sync.user'].search([('user_id', '=', self.env.user.id)], limit=1)
             if nc_sync_user_id and nc_sync_user_id.nc_calendar_id:
                 res.nc_calendar_ids = [(4, nc_sync_user_id.nc_calendar_id.id)]
-        if 'nc_status' not in vals:
-            vals['nc_status'] = self.env.ref('nextcloud_odoo_sync.nc_event_status_confirmed').id
         return res
 
     def write(self, vals):
-        if not self._context.get('sync', False):
+        if not self._context.get('sync', False) and 'nc_synced' not in vals:
             vals['nc_synced'] = False
+        for record in self:
+            # Detach the record from recurring event whenever an edit was made to make
+            # it compatible when synced to Nextcloud calendar
+            if record.recurrence_id:
+                detach = False
+                fields_to_update = list(vals.keys())
+                ex_fields = ['nc_uid', 'nc_rid', 'nc_hash_ids', 'nc_synced', 'nc_to_delete', 'recurrence_id', 'nc_calendar_select']
+                for f in fields_to_update:
+                    if f not in ex_fields:
+                        detach = True
+                        break
+                if detach:
+                    vals.update({'nc_detach': True})
         return super(CalendarEvent, self).write(vals)
 
     def unlink(self):
+        """
+        We can't delete an event that is also in Nextcloud Calendar. Otherwise we would
+        have no clue that the event must must deleted from Nextcloud Calendar at the next sync.
+        We just mark the event as to delete (nc_to_delete=True) before we sync.
+        """
         for record in self:
-            if not self._context.get('sync', False) and record.nc_require_calendar and not self.env.context.get('force_delete', False):
+            if record.nc_uid and not self._context.get('force_delete', False):
                 record.write({'nc_to_delete': True})
             else:
+                if record.recurrence_id:
+                    nc_exdates = ast.literal_eval(str(record.recurrence_id.nc_exdate)) if record.recurrence_id.nc_exdate else []
+                    start_date = record.start.strftime('%Y%m%dT%H%M%S')
+                    if record.allday:
+                        start_date = record.start_date.strftime('%Y%m%d')
+                    nc_exdates.append(start_date)
+                    record.recurrence_id.write({'nc_exdate': nc_exdates})
                 return super(CalendarEvent, self).unlink()
+
+
+class CalendarEventNchash(models.Model):
+    _name = 'calendar.event.nchash'
+    _description = 'Calendar Event Nextcloud Hash'
+
+    calendar_event_id = fields.Many2one('calendar.event', 'Calendar Event', ondelete='cascade')
+    user_id = fields.Many2one('res.users', 'Odoo User', related='nc_sync_user_id.user_id', store=True)
+    nc_sync_user_id = fields.Many2one('nc.sync.user', 'Sync User', ondelete='cascade')
+    nc_uid = fields.Char('UID', related='calendar_event_id.nc_uid', store=True)
+    nc_event_hash = fields.Char('Event Hash')
+
+    def create(self, vals):
+        return super(CalendarEventNchash, self).create(vals)

@@ -4,10 +4,11 @@
 
 from odoo import fields, models
 
+
 class RunSyncTestWizard(models.TransientModel):
     _name = 'run.sync.test.wizard'
-    
+
     message = fields.Text()
-    
+
     def run_sync_cron_test(self):
         self.env['nextcloud.caldav'].sync_cron()

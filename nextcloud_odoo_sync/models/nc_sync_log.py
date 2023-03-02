@@ -46,36 +46,48 @@ class NcSyncLog(models.Model):
     def check_and_log_users(self, sync_log_id):
         """
         Function to Check and log NextCloud users information.
-        @sync_log_id = Object, nc.sync.log object
-        @return = List, NextCloud users that are in linked in odoo
+        :param sync_log_id: single recordset of nc.sync.log model
+        :return: List, NextCloud users that are in linked in odoo
         """
         nc_users = self.env['nextcloud.base'].get_users()["ocs"]["data"]["users"]
         nc_user_email = [nc['id'] for nc in nc_users] + [nc['email'] for nc in nc_users]
         odoo_users = self.env['nc.sync.user'].search_read([('sync_calendar', '=', True)])
         stg_users_odoo_not_in_nc = [x for x in odoo_users if x['user_name'] not in nc_user_email]
-        stg_users_nc_not_in_odoo = [x for x in nc_users if x['email'] not in [o['user_name'] for o in odoo_users]]
+        stg_users_nc_not_in_odoo = []
+        username_list = [o['user_name'].lower() for o in odoo_users]
+        for x in nc_users:
+            if x['email'] and x['email'].lower() not in username_list:
+                if x['displayname'] and x['displayname'].lower() not in username_list:
+                    stg_users_nc_not_in_odoo.append(x)
+            else:
+                stg_users_nc_not_in_odoo.append(x)
         stg_users_nc_in_odoo = []
         # Compare Odoo users with Nextcloud users
-        # if stg_users_odoo_not_in_nc:
-        #     odoo_usernames = ", ".join([x['name'] for x in stg_users_odoo_not_in_nc])
-        #     sync_log_id.line_ids.create({
-        #         'log_id': sync_log_id.id,
-        #         'operation_type': 'read',
-        #         'severity': 'info',
-        #         'response_description': '''Compare Odoo users with Nextcloud users\n\t\tOdoo users not in Nextcloud: %s''' % odoo_usernames,
-        #     })
+        if stg_users_odoo_not_in_nc:
+            odoo_usernames = ", ".join([x['name'] for x in stg_users_odoo_not_in_nc if x['name']])
+            sync_log_id.line_ids.create({
+                'log_id': sync_log_id.id,
+                'operation_type': 'read',
+                'severity': 'info',
+                'response_description': '''Compare Odoo users with Nextcloud users\n\t\tOdoo users not in Nextcloud: %s''' % odoo_usernames,
+            })
         # Compare Nextcloud users with Odoo users
-        # if stg_users_nc_not_in_odoo:
-        #     nc_usernames = ", ".join([x['email'] for x in stg_users_nc_not_in_odoo])
-        #     sync_log_id.line_ids.create({
-        #         'log_id': sync_log_id.id,
-        #         'operation_type': 'read',
-        #         'severity': 'info',
-        #         'response_description': '''Compare Nextcloud users with Odoo users\n\tNextcloud users not in Odoo: %s''' % nc_usernames,
-        #     })
+        if stg_users_nc_not_in_odoo:
+            nc_usernames = ", ".join([x['displayname'] for x in stg_users_nc_not_in_odoo if x['displayname']])
+            sync_log_id.line_ids.create({
+                'log_id': sync_log_id.id,
+                'operation_type': 'read',
+                'severity': 'info',
+                'response_description': '''Compare Nextcloud users with Odoo users\n\tNextcloud users not in Odoo: %s''' % nc_usernames,
+            })
         for odoo_user in odoo_users:
             for nc_user in nc_users:
-                if odoo_user['user_name'].lower() in (nc_user['id'].lower(), nc_user['email'].lower()):
+                user_list = []
+                if 'email' in nc_user and nc_user['email']:
+                    user_list.append(nc_user['email'].lower())
+                if 'id' in nc_user and nc_user['id']:
+                    user_list.append(nc_user['id'].lower())
+                if odoo_user['user_name'].lower() in user_list:
                     stg_users_nc_in_odoo.append(odoo_user)
                     self.env['nc.sync.user'].browse(odoo_user['id']).write({'nextcloud_user_id': nc_user['id']})
 
@@ -89,7 +101,7 @@ class NcSyncLog(models.Model):
 
         return stg_users_nc_in_odoo
 
-    def log_event(self, mode, log_id=False, **params):
+    def log_event(self, mode='text', log_id=False, **params):
         """
         This method takes care of the logging process
         @param: mode, string, indicates the sync phase
@@ -140,25 +152,17 @@ class NcSyncLog(models.Model):
         else:
             error = str(params['error']) if 'error' in params else False
             if not log_id:
-                log_id = self.env.search([], limit=1)
+                log_id = self.browse(self.ids[0])
             res = {'log_id': log_id.id,
                    'operation_type': params['operation_type'] if 'operation_type' in params else 'read',
                    'severity': params['severity'] if 'severity' in params else 'info', }
-
-            # if mode == 'get_event_nextcloud':
-            #     res['response_description'] = 'Get Events per user from Nextcloud'
-            #     if 'nextcloud_total' in params:
-            #         res['response_description'] = 'Total events to process in Nextcloud: %s' % params['nextcloud_total']
-            #
-            # elif mode == 'get_event_odoo':
-            #     res['response_description'] = 'Get Events per user from Odoo'
-            #     if 'odoo_total' in params:
-            #         res['response_description'] = 'Total events to process in Odoo: %s' % params['odoo_total']
 
             if mode == 'text' and 'message' in params:
                 res['response_description'] = params['message']
 
             elif mode == 'error' and error:
+                # Undo the last uncommitted changes
+                self.env.cr.rollback()
                 message = '%s ' % params['message'] if 'message' in params else ''
                 res['response_description'] = '''%s%s''' % (message, error)
 
@@ -168,6 +172,10 @@ class NcSyncLog(models.Model):
                 _logger.warning('Error encountered during log operation: %s' % e)
                 return result
 
+        # Create an event log
+        if 'response_description' in res:
+            _logger.warning(res['response_description'])
+        # Commit the changes to the database
         self.env.cr.commit()
         return result
 
