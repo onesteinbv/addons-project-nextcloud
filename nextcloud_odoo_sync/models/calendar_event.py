@@ -2,12 +2,8 @@
 # Copyright (c) 2023 iScale Solutions Inc.
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-import pytz
 import ast
-import datetime
-from dateutil.parser import parse
-from odoo import api, models, fields, _
-from odoo.exceptions import ValidationError
+from odoo import api, models, fields
 
 
 class CalendarEvent(models.Model):
@@ -42,6 +38,7 @@ class CalendarEvent(models.Model):
     @api.model
     def default_get(self, fields):
         res = super(CalendarEvent, self).default_get(fields)
+        res['nc_status'] = self.env.ref('nextcloud_odoo_sync.nc_event_status_confirmed').id
         res['privacy'] = 'private'
         return res
 
@@ -59,16 +56,17 @@ class CalendarEvent(models.Model):
             else:
                 event.nc_rid = False
 
-    @api.depends('duration', 'partner_ids')
+    @api.depends('duration', 'partner_ids', 'user_id')
     def _compute_nc_require_calendar(self):
         """
         This method determine whether to require a value for the Nextcloud calendar
         """
         nc_calendar_ids = self.env['nc.calendar'].search([('user_id', '=', self.env.user.id)])
-        if nc_calendar_ids:
-            self.nc_require_calendar = True
-        else:
-            self.nc_require_calendar = False
+        for event in self:
+            if nc_calendar_ids and event.user_id and event.user_id == self.env.user:
+                self.nc_require_calendar = True
+            else:
+                self.nc_require_calendar = False
 
     @api.depends('nc_calendar_ids')
     def _compute_nc_calendar(self):
@@ -89,13 +87,17 @@ class CalendarEvent(models.Model):
     @api.onchange('user_id')
     def onchange_nc_user_id(self):
         if self.user_id:
-            default_calendar_id = self.env['nc.sync.user'].search([('user_id', '=', self.user_id.id)], limit=1).mapped('nc_calendar_id')
-            if default_calendar_id:
-                self.nc_calendar_select = default_calendar_id.id
+            if self.nc_require_calendar:
+                default_calendar_id = self.env['nc.sync.user'].search([('user_id', '=', self.user_id.id)], limit=1).mapped('nc_calendar_id')
+                if default_calendar_id and self.user_id == self.env.user:
+                    self.nc_calendar_select = default_calendar_id.id
+            else:
+                self.nc_calendar_select = False
+                self.nc_calendar_ids = False
 
     @api.onchange('nc_calendar_select')
     def onchange_nc_calendar_select(self):
-        if self.nc_calendar_select:
+        if self.nc_calendar_select and self.nc_require_calendar:
             calendar_id = self.env['nc.calendar'].browse(int(self.nc_calendar_select))
             new_calendar_ids = []
             if self.nc_calendar_ids:
@@ -144,9 +146,9 @@ class CalendarEvent(models.Model):
         if 'nc_status' not in vals or not vals['nc_status']:
             vals['nc_status'] = self.env.ref('nextcloud_odoo_sync.nc_event_status_confirmed').id
         res = super(CalendarEvent, self).create(vals)
-        if 'nc_calendar_ids' not in vals:
+        if 'nc_calendar_ids' not in vals or vals['nc_calendar_ids'] == [[6, False, []]]:
             # Check if a value for calendar exist for the user:
-            nc_sync_user_id = self.env['nc.sync.user'].search([('user_id', '=', self.env.user.id)], limit=1)
+            nc_sync_user_id = self.env['nc.sync.user'].search([('user_id', '=', vals['user_id'])], limit=1)
             if nc_sync_user_id and nc_sync_user_id.nc_calendar_id:
                 res.nc_calendar_ids = [(4, nc_sync_user_id.nc_calendar_id.id)]
         return res

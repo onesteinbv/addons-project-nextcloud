@@ -18,18 +18,30 @@ class NcSyncUser(models.Model):
 
     name = fields.Char('Odoo Username', related='user_id.name')
     nextcloud_user_id = fields.Char('Nextcloud User ID')
-    user_name = fields.Char('Username')
-    nc_password = fields.Char('Password')
+    user_name = fields.Char('Username', required=True)
+    nc_password = fields.Char('Password', required=True)
     user_message = fields.Char(default='"Default Calendar" field will be used as your default odoo calendar when creating new events')
-    user_events_hash = fields.Text('Event Hash')
 
-    user_id = fields.Many2one('res.users', 'Odoo User', default=lambda self: self.env.user.id)
+    user_id = fields.Many2one('res.users', 'Odoo User', default=lambda self: self.env.user.id, required=True)
     partner_id = fields.Many2one('res.partner', 'Partner', related='user_id.partner_id', store=True)
     nc_calendar_id = fields.Many2one('nc.calendar', 'Default Nextcloud Calendar')
     nc_hash_ids = fields.One2many('calendar.event.nchash', 'nc_sync_user_id', 'Hash Values')
 
-    user_has_calendar = fields.Boolean('User has calendar')
-    sync_calendar = fields.Boolean('Sync Calendar', default=True)
+    user_has_calendar = fields.Boolean('User has calendar', compute='compute_user_has_calendar')
+    sync_calendar = fields.Boolean('Sync Calendar')
+
+    @api.depends('user_id', 'user_name', 'nc_password')
+    def compute_user_has_calendar(self):
+        """
+        This method determine if current Odoo user have Nextcloud calendar records
+        """
+        for user in self:
+            has_calendar = False
+            if user.user_id:
+                nc_calendar_ids = self.env['nc.calendar'].search([('user_id', '=', user.user_id.id)])
+                if nc_calendar_ids:
+                    has_calendar = True
+            user.user_has_calendar = has_calendar
 
     @api.constrains('user_id')
     def check_user_exist(self):
@@ -41,16 +53,14 @@ class NcSyncUser(models.Model):
     @api.onchange('nc_calendar_id')
     def onchange_nc_calendar_id(self):
         if self.nc_calendar_id:
+            self.sync_calendar = True
             self.user_message = '%s will be used as your default Odoo calendar when creating new events' % self.nc_calendar_id.name
         else:
+            self.sync_calendar = False
             self.user_message = '"Default Calendar" field will be used as your default odoo calendar when creating new events'
 
     def save_user_config(self):
-        """
-        This method will apply the default calendar selected for all existing Odoo events of the user
-        that has no nc_calendar_id value. This will be used to identify which Nextcloud Calendar
-        will be use during the initial sync operation
-        """
+        # Close the pop-up and display the calendar event records
         return self.env.ref('calendar.action_calendar_event').sudo().read()[0]
 
     def write(self, vals):
@@ -77,39 +87,64 @@ class NcSyncUser(models.Model):
             raise ValidationError(f"{connection_principal['sync_error_id'].name}: {connection_principal['response_description']}")
         return connection, connection_principal
 
-    def get_user_calendars(self, connection):
-        nc_calendars = connection.calendars()
+    def get_user_calendars(self, principal):
+        """
+        This method gets all the calendar records of the Nextcloud user and create it in Odoo if not exist
+        :param connection: CalDav connection principal object
+        """
+        nc_calendars = principal.calendars()
+        # Remove Nextcloud calendars in Odoo if the canonical URL no longer exist in Nextcloud
+        calendar_not_in_odoo_ids = self.nc_calendar_id.search([('calendar_url', 'not in', [str(x.canonical_url) for x in nc_calendars]), ('user_id', '=', self.user_id.id)])
+        if calendar_not_in_odoo_ids:
+            calendar_not_in_odoo_ids.sudo().unlink()
         result = []
+        nc_calendar_ids = self.nc_calendar_id.search([('user_id', '=', self.user_id.id)])
         for record in nc_calendars:
-            nc_calendar_id = self.nc_calendar_id.search([('user_id', '=', self.user_id.id), ('name', '=', record.name), ('calendar_url', '=', record.canonical_url)], limit=1)
+            nc_calendar_id = nc_calendar_ids.filtered(lambda x: x.name == record.name and x.canonical_url == record.canonical_url)
             if not nc_calendar_id:
                 result.append({'name': record.name,
                                'user_id': self.user_id.id,
                                'calendar_url': record.canonical_url})
         if result:
-            self.user_has_calendar = True
-            self.nc_calendar_id.create(result)
-        calendar_not_in_odoo_ids = self.nc_calendar_id.search([('calendar_url', 'not in', [str(x.canonical_url) for x in nc_calendars]), ('user_id', '=', self.user_id.id)])
-        if calendar_not_in_odoo_ids:
-            calendar_not_in_odoo_ids.unlink()
+            self.env['nc.calendar'].sudo().create(result)
 
     def check_nc_connection(self):
-        connection, connection_principal = self.sudo().get_user_connection()
-        self.sudo().get_user_calendars(connection_principal)
-        return {'name': 'NextCloud User Setup',
-                'view_mode': 'form',
-                'res_model': 'nc.sync.user',
-                'view_id': self.env.ref('nextcloud_odoo_sync.nc_sync_user_form_view').id,
-                'type': 'ir.actions.act_window',
-                'context': {'pop_up': True},
-                'target': 'new',
-                'res_id': self.id}
+        """
+        This method connects to Nextcloud server using the username and password provided for the user
+        and triggers the creation of Nextcloud Calendar record for use in creating events in Odoo
+        """
+        connection, principal = self.sudo().get_user_connection()
+        self.get_user_calendars(principal)
+        target = 'new' if self._context.get('pop_up') else 'current'
+        res = {'name': 'NextCloud User Setup',
+               'view_mode': 'form',
+               'res_model': 'nc.sync.user',
+               'type': 'ir.actions.act_window',
+               'target': target,
+               'res_id': self.id}
+        if target == 'current':
+            res.update({'context': {'form_view_initial_mode': 'edit', 'no_footer': True}})
+        return res
 
     def unlink(self):
+        sync_user_ids = self.search([]).mapped('user_id')
         if self.user_id:
-            nc_calendar_ids = self.env['nc.calendar'].search([('user_id', 'in', self.user_id.ids)])
-            if nc_calendar_ids:
-                nc_calendar_ids.unlink()
+            calendar_ids = self.env['calendar.event'].search([('user_id', '=', self.user_id.id)])
+            for calendar in calendar_ids:
+                # Check if the calendar event is shared with another Odoo user with an active Nextcloud calendar sync
+                if len(calendar.nc_hash_ids.ids) > 1:
+                    hash_ids = calendar.nc_hash_ids.filtered(lambda x: x.user_id == self.user_id or
+                                                             (sync_user_ids and x.user_id not in sync_user_ids))
+                    hash_ids.unlink()
+                    if not calendar.nc_hash_ids:
+                        calendar.write({'nc_uid': False, 'nc_synced': False})
+                # Otherwise, remove both the nc_uid and hash_ids
+                else:
+                    calendar.write({'nc_uid': False, 'nc_synced': False})
+                    calendar.nc_hash_ids.unlink()
+            # Remove all Nextcloud calendar records
+            nc_calendar_ids = self.env['nc.calendar'].search([('user_id', '=', self.user_id.id)])
+            nc_calendar_ids.unlink()
         return super(NcSyncUser, self).unlink()
 
     def get_event_data(self, event):

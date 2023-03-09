@@ -4,7 +4,6 @@
 
 import requests
 from odoo import models
-from odoo.exceptions import ValidationError
 from odoo.http import request
 
 

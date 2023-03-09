@@ -57,7 +57,12 @@
 				</field>
 				
 				<field name="categ_ids" position="after">
-					<field name="nc_status" widget="selection"/>
+					<field name="nc_status" widget="selection" 
+						attrs="{'required':[('nc_require_calendar','=',True)], 'invisible':[('nc_require_calendar','=',False)]}"/>
+				</field>
+				
+				<field name="user_id" position="attributes">
+					<attribute name="attrs">{'readonly': [('nc_uid', '!=', False)]}</attribute>
 				</field>
 	      	</field>
 		</record>

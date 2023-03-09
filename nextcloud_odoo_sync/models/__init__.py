@@ -3,7 +3,6 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 from . import nextcloud_base
-from . import nextcloud_webdav
 from . import nextcloud_caldav
 from . import calendar_event
 from . import calendar_recurrence
