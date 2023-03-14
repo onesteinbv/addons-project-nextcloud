@@ -49,19 +49,17 @@
 							<field name="error_code_id"/>
 							<field name="response_description"/>
 							<field name="data_send"/>
-							<field name="prev_value" optional="hide"/>
-							<field name="new_value" optional="hide"/>
 						</tree>
 					</field>
 				</form>
 			</field>
 		</record>
-		<record id="action_nc_log_user" model="ir.actions.act_window">
+		<record id="nc_sync_log_action" model="ir.actions.act_window">
 			<field name="name">Sync Activity</field>
 			<field name="res_model">nc.sync.log</field>
 			<field name="view_mode">tree,form</field>
 		</record>
 		<menuitem id="menu_main_nextcloud_nextcloud" name="Sync" parent="menu_main_nextcloud" sequence="1"/>
-		<menuitem id="menu_main_nextcloud_sync_log" name="Sync Activity" parent="menu_main_nextcloud_nextcloud" action="action_nc_log_user"/>
+		<menuitem id="menu_main_nextcloud_sync_log" name="Sync Activity" parent="menu_main_nextcloud_nextcloud" action="nc_sync_log_action"/>
 	</data>
 </odoo>

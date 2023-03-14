@@ -159,7 +159,7 @@ msgid "Error Code"
 msgstr ""
 
 #. module: nextcloud_odoo_sync
-#: model:ir.actions.act_window,name:nextcloud_odoo_sync.action_nc_sync_error
+#: model:ir.actions.act_window,name:nextcloud_odoo_sync.nc_sync_error_action
 #: model:ir.ui.menu,name:nextcloud_odoo_sync.menu_main_nc_sync_error
 msgid "Error List"
 msgstr ""
@@ -445,7 +445,7 @@ msgid "Server URL"
 msgstr ""
 
 #. module: nextcloud_odoo_sync
-#: model:ir.actions.act_window,name:nextcloud_odoo_sync.nc_sync_settings_action
+#: model:ir.actions.act_window,name:nextcloud_odoo_sync.res_config_settings_nc_sync_settings_action
 #: model:ir.ui.menu,name:nextcloud_odoo_sync.nc_sync_settings_menu
 msgid "Settings"
 msgstr ""
@@ -508,7 +508,7 @@ msgid "Sync code"
 msgstr ""
 
 #. module: nextcloud_odoo_sync
-#: model:ir.actions.act_window,name:nextcloud_odoo_sync.action_nc_log_user
+#: model:ir.actions.act_window,name:nextcloud_odoo_sync.nc_sync_log_action
 msgid "Sync's"
 msgstr ""
 
@@ -533,7 +533,7 @@ msgid "User Name"
 msgstr ""
 
 #. module: nextcloud_odoo_sync
-#: model:ir.actions.act_window,name:nextcloud_odoo_sync.action_nextcloud_sync_user
+#: model:ir.actions.act_window,name:nextcloud_odoo_sync.nc_sync_user_action
 #: model:ir.ui.menu,name:nextcloud_odoo_sync.menu_main_nextcloud_sync_user
 msgid "User Setup"
 msgstr ""

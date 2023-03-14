@@ -23,7 +23,7 @@ Nextcloud-Odoo Sync
     :target: https://runboat.odoo-community.org/webui/builds.html?repo=OCA/volendra-misc&target_branch=main
     :alt: Try me on Runboat
 
-|badge1| |badge2| |badge3| |badge4| |badge5| 
+|badge1| |badge2| |badge3| |badge4| |badge5|
 
 This module sync Nextcloud apps into Odoo counterpart app.
 
@@ -95,7 +95,7 @@ promote its widespread use.
 
 Current `maintainer <https://odoo-community.org/page/maintainer-role>`__:
 
-|maintainer-iscale-solutions| 
+|maintainer-iscale-solutions|
 
 This module is part of the `OCA/volendra-misc <https://github.com/OCA/volendra-misc/tree/main/nextcloud_odoo_sync>`_ project on GitHub.
 
