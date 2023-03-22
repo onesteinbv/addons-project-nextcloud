@@ -142,6 +142,7 @@ class NcSyncLog(models.Model):
         result = {"resume": True, "stg_users_nc_in_odoo": []}
         config = self.env["ir.config_parameter"].sudo()
         log_line = self.env["nc.sync.log.line"]
+        res = {}
 
         nc_url = (
             config.get_param("nextcloud_odoo_sync.nextcloud_url") + "/remote.php/dav"

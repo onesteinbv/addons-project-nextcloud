@@ -2,7 +2,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 {
     "name": "Nextcloud-Odoo Sync",
-    "version": "15.0.0.9",
+    "version": "15.0.1.0",
     "category": "Others",
     "description": """Sync Nextcloud apps into Odoo""",
     "author": "iScale Solutions Inc.",
@@ -26,7 +26,7 @@
         "views/nc_calendar_views.xml",
         "views/res_users_views.xml",
         "views/res_config_settings_views.xml",
-        "wizards/run_sync_test_wizard_views.xml",
+        "wizards/run_sync_wizard_views.xml",
     ],
     "installable": True,
     "active": False,

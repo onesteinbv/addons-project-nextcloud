@@ -41,6 +41,7 @@ class NcSyncUser(models.Model):
         "User has calendar", compute="compute_user_has_calendar"
     )
     sync_calendar = fields.Boolean("Sync Calendar")
+    nc_email = fields.Char("Email")
 
     @api.depends("user_id", "user_name", "nc_password")
     def compute_user_has_calendar(self):
@@ -49,14 +50,11 @@ class NcSyncUser(models.Model):
         have Nextcloud calendar records
         """
         for user in self:
-            has_calendar = False
-            if user.user_id:
-                nc_calendar_ids = user.env.user.nc_calendar_ids
-                if nc_calendar_ids:
-                    has_calendar = True
-            user.user_has_calendar = has_calendar
+            user.user_has_calendar = (
+                True if user.user_id and user.user_id.nc_calendar_ids else False
+            )
 
-    @api.constrains("user_id")
+    @api.constrains("user_id", "user_name")
     def check_user_exist(self):
         for user in self:
             sync_user_id = self.search(
@@ -103,6 +101,7 @@ class NcSyncUser(models.Model):
                         "|",
                         ("user_id", "=", self.user_id.id),
                         ("partner_ids", "in", self.user_id.partner_id.id),
+                        ("nc_synced", "=", False),
                     ]
                 )
                 .filtered(
@@ -113,6 +112,11 @@ class NcSyncUser(models.Model):
                     )
                 )
             )
+            calendar_ids = calendar_event_ids.nc_calendar_ids.filtered(
+                lambda x: x.user_id == self.user_id
+            )
+            for calendar_id in calendar_ids:
+                calendar_event_ids.nc_calendar_ids = [(3, calendar_id.id)]
             calendar_event_ids.with_context(sync=True).write(
                 {"nc_calendar_ids": [(4, vals["nc_calendar_id"])]}
             )
@@ -140,7 +144,7 @@ class NcSyncUser(models.Model):
                     calendar.write({"nc_uid": False, "nc_synced": False})
                     calendar.nc_hash_ids.unlink()
             # Remove all Nextcloud calendar records
-            nc_calendar_ids = self.env.user.nc_calendar_ids
+            nc_calendar_ids = self.user_id.nc_calendar_ids
             nc_calendar_ids.unlink()
         return super(NcSyncUser, self).unlink()
 
@@ -181,6 +185,8 @@ class NcSyncUser(models.Model):
         connection, principal = self.env["nextcloud.caldav"].check_nextcloud_connection(
             url=nc_url, username=self.user_name, password=self.nc_password
         )
+        user_data = self.env["nextcloud.base"].get_user(principal.client.username)
+        self.nc_email = user_data.get("email", False) if user_data else False
         if isinstance(principal, dict):
             sync_error = principal["sync_error_id"].name
             response = principal["response_description"]
@@ -218,7 +224,7 @@ class NcSyncUser(models.Model):
         for record in nc_calendars:
             nc_calendar_id = nc_calendar_ids.filtered(
                 lambda x: x.name == record.name
-                and x.canonical_url == record.canonical_url
+                and x.calendar_url == record.canonical_url
             )
             if not nc_calendar_id:
                 result.append(
@@ -357,7 +363,7 @@ class NcSyncUser(models.Model):
                         limit=1,
                     )
                     if nc_calendar_id:
-                        if calendar.name != nc_calendar_id:
+                        if calendar.name != nc_calendar_id.name:
                             nc_calendar_id.name = calendar.name
                     else:
                         self.env["nc.calendar"].sudo().create(

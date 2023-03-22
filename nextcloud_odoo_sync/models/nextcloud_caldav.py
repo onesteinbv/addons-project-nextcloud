@@ -77,6 +77,7 @@ class Nextcloudcaldav(models.AbstractModel):
         od_events_dict = {"create": [], "write": [], "delete": []}
         nc_events_dict = {"create": [], "write": [], "delete": []}
 
+        od_event = self.env["calendar.event"]
         # Compare Odoo events to sync
         if od_events and nc_events:
             # Odoo -> Nextcloud
@@ -297,10 +298,16 @@ class Nextcloudcaldav(models.AbstractModel):
                 email = att.split(":")[-1].lower()
                 if email != "false":
                     # Check if an Odoo user has the same email address
-                    att_user_id = all_user_ids.filtered(
-                        lambda x: x.partner_id.email
-                        and x.partner_id.email.lower() == email
+                    att_user_id = (
+                        self.env["nc.sync.user"]
+                        .search([("nc_email", "=", email)], limit=1)
+                        .user_id
                     )
+                    if not att_user_id:
+                        att_user_id = all_user_ids.filtered(
+                            lambda x: x.partner_id.email
+                            and x.partner_id.email.lower() == email
+                        )
                     # In case more than 1 user has the same email address,
                     # check which user is in nc.sync.user model
                     if att_user_id and len(user_id.ids) > 1:

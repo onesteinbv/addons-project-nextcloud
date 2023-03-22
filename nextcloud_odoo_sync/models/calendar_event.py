@@ -50,13 +50,6 @@ class CalendarEvent(models.Model):
         ).id
         return res
 
-    def _compute_nc_calendar_ids(self):
-        nc_calendar_ids = self.env.user.nc_calendar_ids
-        if nc_calendar_ids:
-            self.nc_calendar_ids = [(6, 0, nc_calendar_ids.ids)]
-        else:
-            self.nc_calendar_ids = [(6, 0, [])]
-
     @api.depends("recurrence_id")
     def _compute_nc_rid(self):
         """
@@ -120,6 +113,9 @@ class CalendarEvent(models.Model):
             else:
                 self.nc_calendar_select = False
                 self.nc_calendar_ids = False
+        else:
+            self.nc_calendar_select = False
+            self.nc_calendar_ids = False
 
     @api.onchange("nc_calendar_select")
     def onchange_nc_calendar_select(self):
@@ -128,8 +124,19 @@ class CalendarEvent(models.Model):
         nc_calanedar_ids field is updated with the value selected by
         the user in nc_calendar_select and that old values are removed
         """
-        if self.nc_calendar_select and self.nc_require_calendar:
-            calendar_id = self.env["nc.calendar"].browse(int(self.nc_calendar_select))
+        if self.nc_require_calendar:
+            if self.nc_calendar_select:
+                calendar_id = self.env["nc.calendar"].browse(
+                    int(self.nc_calendar_select)
+                )
+            elif not self.nc_calendar_select and self.user_id:
+                calendar_id = (
+                    self.env["nc.sync.user"]
+                    .search([("user_id", "=", self.user_id.id)], limit=1)
+                    .mapped("nc_calendar_id")
+                )
+            else:
+                calendar_id = self.env["nc.sync.user"]
             new_calendar_ids = []
             if self.nc_calendar_ids:
                 new_calendar_ids = self.nc_calendar_ids.ids

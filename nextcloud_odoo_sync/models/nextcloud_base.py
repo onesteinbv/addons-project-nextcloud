@@ -10,6 +10,11 @@ class NextcloudBase(models.AbstractModel):
     _name = "nextcloud.base"
     _description = "NextCloud Base API"
 
+    """
+    These functions were derived from:
+    https://github.com/EnterpriseyIntranet/nextcloud-API
+    """
+
     def get_auth_data(self):
         config_obj = self.env["ir.config_parameter"]
         data = {
@@ -84,3 +89,12 @@ class NextcloudBase(models.AbstractModel):
                 users.append(res.json()["ocs"]["data"])
             result["ocs"]["data"]["users"] = users
         return result
+
+    def get_user(self, uid):
+        """
+        Retrieve information about a single user
+        :param uid: str, uid of user
+        :return:
+        """
+        result = self.get("{uid}".format(uid=uid))
+        return result["ocs"]["data"]

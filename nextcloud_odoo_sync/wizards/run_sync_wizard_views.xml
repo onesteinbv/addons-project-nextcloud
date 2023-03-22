@@ -1,13 +1,13 @@
 <odoo>
-	<record id="run_sync_test_wizard_confirm_form" model="ir.ui.view">
-        <field name="name">run.sync.test.confirm.form</field>
-        <field name="model">run.sync.test.wizard</field>
+	<record id="run_sync_wizard_confirm_form" model="ir.ui.view">
+        <field name="name">run.sync.confirm.form</field>
+        <field name="model">run.sync.wizard</field>
         <field name="arch" type="xml">
             <form>
                 <sheet>
                     <group>
                         <group>
-                            <field name="message" nolabel="1" readonly="1"/>
+                            <span>You're about to run NextCloud sync. Confirm?</span>
                         </group>
                     </group>
                 </sheet>
@@ -19,20 +19,20 @@
         </field>
     </record>
 
-    <record id="run_sync_test_wizard_confirm_message" model="ir.actions.act_window">
+    <record id="run_sync_wizard_confirm_message" model="ir.actions.act_window">
         <field name="name">Run Sync</field>
         <field name="type">ir.actions.act_window</field>
-        <field name="res_model">run.sync.test.wizard</field>
+        <field name="res_model">run.sync.wizard</field>
         <field name="view_mode">form</field>
-        <field name="view_id" ref="run_sync_test_wizard_confirm_form"/>
-        <field name="context">{'default_message': "You're about to run NextCloud sync test. Confirm?"}</field>
+        <field name="view_id" ref="run_sync_wizard_confirm_form"/>
+        <field name="context">{}</field>
         <field name="target">new</field>
     </record>
 
 	<menuitem
-		id="menu_nextcloud_sync_test"
+		id="menu_nextcloud_sync"
 		name="Run Sync"
 		parent="nextcloud_odoo_sync.menu_main_nextcloud_nextcloud"
-		action="run_sync_test_wizard_confirm_message"
+		action="run_sync_wizard_confirm_message"
 		sequence="10"/>
 </odoo>
