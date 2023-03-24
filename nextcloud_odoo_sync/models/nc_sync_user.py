@@ -124,28 +124,29 @@ class NcSyncUser(models.Model):
 
     def unlink(self):
         sync_user_ids = self.search([]).mapped("user_id")
-        if self.user_id:
-            calendar_ids = self.env["calendar.event"].search(
-                [("user_id", "=", self.user_id.id)]
-            )
-            for calendar in calendar_ids:
-                # Check if the calendar event is shared with another
-                # Odoo user with an active Nextcloud calendar sync
-                if len(calendar.nc_hash_ids.ids) > 1:
-                    hash_ids = calendar.nc_hash_ids.filtered(
-                        lambda x: x.user_id == self.user_id
-                        or (sync_user_ids and x.user_id not in sync_user_ids)
-                    )
-                    hash_ids.unlink()
-                    if not calendar.nc_hash_ids:
+        for record in self:
+            if record.user_id:
+                calendar_ids = record.env["calendar.event"].search(
+                    [("user_id", "=", record.user_id.id)]
+                )
+                for calendar in calendar_ids:
+                    # Check if the calendar event is shared with another
+                    # Odoo user with an active Nextcloud calendar sync
+                    if len(calendar.nc_hash_ids.ids) > 1:
+                        hash_ids = calendar.nc_hash_ids.filtered(
+                            lambda x: x.user_id == record.user_id
+                            or (sync_user_ids and x.user_id not in sync_user_ids)
+                        )
+                        hash_ids.unlink()
+                        if not calendar.nc_hash_ids:
+                            calendar.write({"nc_uid": False, "nc_synced": False})
+                    # Otherwise, remove both the nc_uid and hash_ids
+                    else:
                         calendar.write({"nc_uid": False, "nc_synced": False})
-                # Otherwise, remove both the nc_uid and hash_ids
-                else:
-                    calendar.write({"nc_uid": False, "nc_synced": False})
-                    calendar.nc_hash_ids.unlink()
-            # Remove all Nextcloud calendar records
-            nc_calendar_ids = self.user_id.nc_calendar_ids
-            nc_calendar_ids.unlink()
+                        calendar.nc_hash_ids.unlink()
+                # Remove all Nextcloud calendar records
+                nc_calendar_ids = record.user_id.nc_calendar_ids
+                nc_calendar_ids.unlink()
         return super(NcSyncUser, self).unlink()
 
     def save_user_config(self):
@@ -185,12 +186,12 @@ class NcSyncUser(models.Model):
         connection, principal = self.env["nextcloud.caldav"].check_nextcloud_connection(
             url=nc_url, username=self.user_name, password=self.nc_password
         )
-        user_data = self.env["nextcloud.base"].get_user(principal.client.username)
-        self.nc_email = user_data.get("email", False) if user_data else False
         if isinstance(principal, dict):
             sync_error = principal["sync_error_id"].name
             response = principal["response_description"]
             raise ValidationError(f"{sync_error}: {response}")
+        user_data = self.env["nextcloud.base"].get_user(principal.client.username)
+        self.nc_email = user_data.get("email", False) if user_data else False
         return {"connection": connection, "principal": principal}
 
     def get_user_calendars(self, principal):
@@ -247,7 +248,7 @@ class NcSyncUser(models.Model):
         connection_dict = self.sudo().get_user_connection()
         principal = connection_dict.get("principal", False)
         self.get_user_calendars(principal)
-        target = "new" if self._context.get("pop_up") else "current"
+        target = "new" if self._context.get("pop_up") else "main"
         res = {
             "name": "NextCloud User Setup",
             "view_mode": "form",
@@ -256,7 +257,7 @@ class NcSyncUser(models.Model):
             "target": target,
             "res_id": self.id,
         }
-        if target == "current":
+        if target == "main":
             res.update(
                 {"context": {"form_view_initial_mode": "edit", "no_footer": True}}
             )
@@ -332,9 +333,15 @@ class NcSyncUser(models.Model):
                 # Get all Odoo events where user is organizer or attendee
                 od_event_ids = events.filtered(
                     lambda x: x.user_id == user.user_id
-                    or (x.partner_ids and user.partner_id in x.partner_ids.ids)
+                    or (x.partner_ids and user.partner_id in x.partner_ids)
                 )
                 for event in od_event_ids:
+                    if (
+                        event.user_id in params["all_sync_user_ids"].mapped("user_id")
+                        and not event.nc_uid
+                        and event.user_id != user.user_id
+                    ):
+                        continue
                     event_hash = False
                     if event.nc_hash_ids:
                         event_hash = event.nc_hash_ids.filtered(
@@ -390,3 +397,38 @@ class NcSyncUser(models.Model):
                     return result
                 else:
                     raise ValidationError(_(error))
+
+    def get_nc_event_hash_by_uid(self, nc_uid):
+        for user in self:
+            connection_dict = user.get_user_connection()
+            principal = connection_dict["principal"]
+            for calendar in principal.calendars():
+                # Check if calendar exist for the user and make sure
+                # it has the same name as the Nextcloud calendar in case
+                # the user rename it in Nextcloud, otherwise create a new
+                # calendar if not exist
+                if "shared_by" in calendar.canonical_url:
+                    continue
+                nc_calendar_id = self.nc_calendar_id.search(
+                    [
+                        ("user_id", "=", self.user_id.id),
+                        ("calendar_url", "=", calendar.canonical_url),
+                    ],
+                    limit=1,
+                )
+                if nc_calendar_id:
+                    if calendar.name != nc_calendar_id.name:
+                        nc_calendar_id.name = calendar.name
+                else:
+                    self.env["nc.calendar"].sudo().create(
+                        {
+                            "name": calendar.name,
+                            "user_id": user.user_id.id,
+                            "calendar_url": calendar.canonical_url,
+                        }
+                    )
+                for item in calendar.events():
+                    event_vals = user.get_event_data(item)
+                    if event_vals["uid"] == nc_uid:
+                        return event_vals["hash"]
+        return False

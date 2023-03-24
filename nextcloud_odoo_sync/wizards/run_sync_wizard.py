@@ -7,5 +7,5 @@ from odoo import models
 class RunSyncWizard(models.TransientModel):
     _name = "run.sync.wizard"
 
-    def run_sync_cron_test(self):
+    def run_sync_cron(self):
         self.env["nextcloud.caldav"].sync_cron()

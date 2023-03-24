@@ -26,13 +26,12 @@ class ResConfigSettings(models.TransientModel):
     @api.model
     def set_values(self):
         res = super(ResConfigSettings, self).set_values()
-        self.env["ir.config_parameter"].sudo().set_param(
+        ir_config_paramater_obj = self.env["ir.config_parameter"].sudo()
+        ir_config_paramater_obj.set_param(
             "nextcloud_odoo_sync.nextcloud_url", self.nextcloud_url.strip("/")
         )
-        if (
-            self.env["ir.config_parameter"]
-            .sudo()
-            .get_param("nextcloud_odoo_sync.enable_calendar_sync")
+        if ir_config_paramater_obj.get_param(
+            "nextcloud_odoo_sync.enable_calendar_sync"
         ):
             nextcloud_url = self.nextcloud_url.strip("/")
             connection, principal = self.env[
@@ -49,11 +48,11 @@ class ResConfigSettings(models.TransientModel):
                 nextcloud_connection_status = "online"
                 nextcloud_error = False
 
-            self.env["ir.config_parameter"].sudo().set_param(
+            ir_config_paramater_obj.set_param(
                 "nextcloud_odoo_sync.nextcloud_connection_status",
                 nextcloud_connection_status,
             )
-            self.env["ir.config_parameter"].sudo().set_param(
+            ir_config_paramater_obj.set_param(
                 "nextcloud_odoo_sync.nextcloud_error", nextcloud_error
             )
         return res
@@ -61,15 +60,16 @@ class ResConfigSettings(models.TransientModel):
     @api.model
     def get_values(self):
         res = super(ResConfigSettings, self).get_values()
+        ir_config_paramater_obj = self.env["ir.config_parameter"].sudo()
         res.update(
-            nextcloud_url=self.env["ir.config_parameter"]
-            .sudo()
-            .get_param("nextcloud_odoo_sync.nextcloud_url"),
-            nextcloud_connection_status=self.env["ir.config_parameter"]
-            .sudo()
-            .get_param("nextcloud_odoo_sync.nextcloud_connection_status"),
-            nextcloud_error=self.env["ir.config_parameter"]
-            .sudo()
-            .get_param("nextcloud_odoo_sync.nextcloud_error"),
+            nextcloud_url=ir_config_paramater_obj.get_param(
+                "nextcloud_odoo_sync.nextcloud_url"
+            ),
+            nextcloud_connection_status=ir_config_paramater_obj.get_param(
+                "nextcloud_odoo_sync.nextcloud_connection_status"
+            ),
+            nextcloud_error=ir_config_paramater_obj.get_param(
+                "nextcloud_odoo_sync.nextcloud_error"
+            ),
         )
         return res

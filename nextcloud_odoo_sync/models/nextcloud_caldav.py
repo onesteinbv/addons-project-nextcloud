@@ -225,6 +225,7 @@ class Nextcloudcaldav(models.AbstractModel):
         if od_events and not nc_events:
             for ode in od_events:
                 # ignore if cancelled
+                od_event = ode["od_event"]
                 if (
                     od_event.nc_status_id
                     and od_event.nc_status_id.name.lower() != "canceled"
@@ -310,7 +311,7 @@ class Nextcloudcaldav(models.AbstractModel):
                         )
                     # In case more than 1 user has the same email address,
                     # check which user is in nc.sync.user model
-                    if att_user_id and len(user_id.ids) > 1:
+                    if att_user_id and len(att_user_id.ids) > 1:
                         sync_user_id = all_sync_user_ids.filtered(
                             lambda x: x.user_id.id in att_user_id.ids
                         )
@@ -327,11 +328,10 @@ class Nextcloudcaldav(models.AbstractModel):
                                 .partner_id.id
                             )
                     else:
-                        contact_id = all_partner_ids.filtered(
-                            lambda x: x.email.lower() == email
-                        )
-                        if contact_id:
-                            attendee_partner_ids.append(contact_id.ids[0])
+                        if att_user_id:
+                            if not att_user_id.partner_id.email:
+                                att_user_id.partner_id.email = email
+                            attendee_partner_ids.append(att_user_id.partner_id.id)
                         else:
                             contact_id = self.env["res.partner"].create(
                                 {"name": email, "email": email, "nc_sync": True}
@@ -344,6 +344,7 @@ class Nextcloudcaldav(models.AbstractModel):
             and calendar_event.partner_ids
             and all_sync_user_ids
         ):
+            nc_user_ids = self.env["nc.sync.user"]
             for partner in calendar_event.partner_ids:
                 # In Nextcloud, we don"t populate the attendee if there is only
                 # the organizer involve
@@ -355,6 +356,7 @@ class Nextcloudcaldav(models.AbstractModel):
                         lambda x: x.partner_id.id == partner.id
                     )
                     try:
+                        nc_user_ids |= nc_user_id
                         connection_dict = nc_user_id.get_user_connection()
                         nc_user_principal = connection_dict["principal"]
                     except Exception:
@@ -367,7 +369,8 @@ class Nextcloudcaldav(models.AbstractModel):
                         # Get only partner_ids with email address
                         if partner.email:
                             attendee_partner_ids.append(f"mailto:{partner.email}")
-        return attendee_partner_ids, all_partner_ids
+            params["nc_user_ids"] = nc_user_ids
+        return attendee_partner_ids, params
 
     def get_event_datetime(self, nc_field, nc_value, vals, od_event=False):
         """
@@ -697,7 +700,7 @@ class Nextcloudcaldav(models.AbstractModel):
                         vals.pop("write_date", False)
                         (
                             attendee_partner_ids,
-                            params["all_partner_ids"],
+                            params,
                         ) = self.get_event_attendees(caldav_event, user_id, **params)
                         hash_vals = {
                             "nc_sync_user_id": sync_user_id.id,
@@ -708,11 +711,12 @@ class Nextcloudcaldav(models.AbstractModel):
                                 "partner_ids": [(6, 0, attendee_partner_ids)],
                                 "allday": all_day,
                                 "nc_allday": all_day,
-                                "user_id": user_id.id,
+                                "user_id": od_event_id.user_id.id
+                                if od_event_id
+                                else user_id.id,
                                 "nc_synced": True,
                             }
                         )
-
                         # Perform create operation
                         if operation == "create":
                             try:
@@ -912,7 +916,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                 value, user_tz, "local"
                             )
                     elif field == "partner_ids":
-                        attendees, params["all_partner_ids"] = self.get_event_attendees(
+                        attendees, params = self.get_event_attendees(
                             event_id, sync_user_id.user_id, **params
                         )
                     elif field == "description":
@@ -983,6 +987,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                     attendees=attendees,
                                     schedule_agent="NONE",
                                 )
+                            vevent = caldav_event.vobject_instance.vevent
                             params["create_count"] += 1
                         else:
                             params["error_count"] += 1
@@ -1089,6 +1094,9 @@ class Nextcloudcaldav(models.AbstractModel):
                 if operation in ("create", "write"):
                     try:
                         caldav_event.save()
+                        event_hash = sync_user_id.get_nc_event_hash_by_uid(
+                            vevent.uid.value
+                        )
                         # Update the Odoo event record
                         res = {"nc_uid": vevent.uid.value, "nc_synced": True}
                         if event_id.nc_detach:
@@ -1099,8 +1107,38 @@ class Nextcloudcaldav(models.AbstractModel):
                                     "nc_detach": False,
                                 }
                             )
-                        event_id.write(res)
+                        if "nc_hash_ids" not in res:
+                            res["nc_hash_ids"] = []
+                        res["nc_hash_ids"].append(
+                            (
+                                0,
+                                0,
+                                {
+                                    "nc_sync_user_id": sync_user_id.id,
+                                    "nc_event_hash": event_hash,
+                                },
+                            )
+                        )
                         update_events_hash[event_id.nc_uid] = event_id
+                        nc_user_ids = params["nc_user_ids"]
+                        if nc_user_ids:
+                            for nc_user_id in nc_user_ids:
+                                nc_user_event_hash = (
+                                    nc_user_id.get_nc_event_hash_by_uid(
+                                        vevent.uid.value
+                                    )
+                                )
+                                res["nc_hash_ids"].append(
+                                    (
+                                        0,
+                                        0,
+                                        {
+                                            "nc_sync_user_id": nc_user_id.id,
+                                            "nc_event_hash": nc_user_event_hash,
+                                        },
+                                    )
+                                )
+                        event_id.write(res)
                         # Commit the changes to the database since it is
                         # already been updated in Nextcloud
                         self.env.cr.commit()
@@ -1148,22 +1186,6 @@ class Nextcloudcaldav(models.AbstractModel):
                             operation_type="delete",
                         )
                         params["error_count"] += 1
-
-        # Update hash value of events
-        if update_events_hash:
-            try:
-                hash_vals = {
-                    "principal": principal,
-                    "events": update_events_hash,
-                    "sync_user_id": sync_user_id,
-                }
-                self.update_event_hash(hash_vals)
-            except Exception as e:
-                message = (
-                    "Error updating hash values of events for user '%s':\n" % user_name
-                )
-                log_obj.log_event(mode="error", error=e, message=message)
-
         return params
 
     def sync_cron(self):

@@ -81,12 +81,8 @@ class NextcloudBase(models.AbstractModel):
         if isinstance(result, dict):
             users = []
             for uid in result["ocs"]["data"]["users"]:
-                url = self.get_full_url(uid, "/ocs/v1.php/cloud/users")
-                data = self.get_auth_data()
-                res = requests.get(
-                    url, auth=data["auth_pk"], headers=data["h_get"], params=params
-                )
-                users.append(res.json()["ocs"]["data"])
+                res = self.get(uid)
+                users.append(res["ocs"]["data"])
             result["ocs"]["data"]["users"] = users
         return result
 
