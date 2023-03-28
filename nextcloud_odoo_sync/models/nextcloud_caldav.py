@@ -38,7 +38,7 @@ class Nextcloudcaldav(models.AbstractModel):
         }
         return res
 
-    def compare_events(self, od_events, nc_events):
+    def compare_events(self, od_events, nc_events, sync_user_id=False):
         """
         This method compares the Odoo and Nextcloud events and returns
         the value to be created, modified or delete
@@ -150,7 +150,8 @@ class Nextcloudcaldav(models.AbstractModel):
                                         # delete (nc_to_delete=False), update
                                         # Nextcloud event
                                         else:
-                                            nc_events_dict["write"].append(ode)
+                                            if sync_user_id.user_id == od_event.user_id:
+                                                nc_events_dict["write"].append(ode)
                                     else:
                                         nc_events_dict["delete"].append(ode)
                             # Case 3: If both hash differs
@@ -191,7 +192,11 @@ class Nextcloudcaldav(models.AbstractModel):
                                             )
                                             od_last_modified = od_event.write_date
                                             if od_last_modified > nc_last_modified:
-                                                nc_events_dict["write"].append(ode)
+                                                if (
+                                                    sync_user_id.user_id
+                                                    == od_event.user_id
+                                                ):
+                                                    nc_events_dict["write"].append(ode)
                                             else:
                                                 od_events_dict["write"].append(nce)
 
@@ -696,7 +701,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                 "nextcloud_odoo_sync.nc_event_status_confirmed"
                             ).id
                         # Populate attendees and rest of remaining fields
-                        event_name = vals["name"]
+                        event_name = vals.get("name", "Untitled event")
                         vals.pop("write_date", False)
                         (
                             attendee_partner_ids,
@@ -1109,10 +1114,13 @@ class Nextcloudcaldav(models.AbstractModel):
                             )
                         if "nc_hash_ids" not in res:
                             res["nc_hash_ids"] = []
+                        event_nchash_id = event_id.nc_hash_ids.filtered(
+                            lambda x: x.nc_sync_user_id == sync_user_id
+                        )
                         res["nc_hash_ids"].append(
                             (
-                                0,
-                                0,
+                                0 if not event_nchash_id else 1,
+                                0 if not event_nchash_id else event_nchash_id[0].id,
                                 {
                                     "nc_sync_user_id": sync_user_id.id,
                                     "nc_event_hash": event_hash,
@@ -1128,10 +1136,15 @@ class Nextcloudcaldav(models.AbstractModel):
                                         vevent.uid.value
                                     )
                                 )
+                                event_nchash_id = event_id.nc_hash_ids.filtered(
+                                    lambda x: x.nc_sync_user_id == nc_user_id
+                                )
                                 res["nc_hash_ids"].append(
                                     (
-                                        0,
-                                        0,
+                                        0 if not event_nchash_id else 1,
+                                        0
+                                        if not event_nchash_id
+                                        else event_nchash_id[0].id,
                                         {
                                             "nc_sync_user_id": nc_user_id.id,
                                             "nc_event_hash": nc_user_event_hash,
@@ -1242,7 +1255,7 @@ class Nextcloudcaldav(models.AbstractModel):
                         message="Comparing events for '%s'" % user["user_name"]
                     )
                     od_events_dict, nc_events_dict = self.compare_events(
-                        od_events, nc_events
+                        od_events, nc_events, user
                     )
                     # Log number of operations to do
                     all_stg_events = {

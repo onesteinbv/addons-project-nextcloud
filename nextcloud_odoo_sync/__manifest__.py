@@ -2,7 +2,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 {
     "name": "Nextcloud-Odoo Sync",
-    "version": "15.0.1.1",
+    "version": "15.0.1.2",
     "category": "Others",
     "description": """Sync Nextcloud apps into Odoo""",
     "author": "iScale Solutions Inc.",
