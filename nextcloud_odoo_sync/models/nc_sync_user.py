@@ -381,11 +381,14 @@ class NcSyncUser(models.Model):
                             }
                         )
                     for item in calendar.events():
-                        organizer_email = item.instance.vevent.organizer.value.replace(
-                            "mailto:", ""
-                        )
-                        if organizer_email != user.nc_email:
-                            continue
+                        if "organizer" in item.instance.vevent.contents:
+                            organizer_email = (
+                                item.instance.vevent.organizer.value.replace(
+                                    "mailto:", ""
+                                )
+                            )
+                            if organizer_email != user.nc_email:
+                                continue
                         event_vals = user.get_event_data(item)
                         result["nc_events"].append(
                             {
