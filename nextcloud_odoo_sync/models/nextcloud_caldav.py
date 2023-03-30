@@ -38,7 +38,7 @@ class Nextcloudcaldav(models.AbstractModel):
         }
         return res
 
-    def compare_events(self, od_events, nc_events, sync_user_id=False):
+    def compare_events(self, od_events, nc_events, sync_user_id, log_obj):
         """
         This method compares the Odoo and Nextcloud events and returns
         the value to be created, modified or delete
@@ -165,10 +165,38 @@ class Nextcloudcaldav(models.AbstractModel):
                                         "status" not in vevent.contents
                                         or vevent.status.value.lower() == "cancelled"
                                     ):
-                                        od_events_dict["delete"].append(nce)
+                                        if sync_user_id.user_id == od_event.user_id:
+                                            od_events_dict["delete"].append(nce)
                                     else:
                                         if nce not in od_events_dict["write"]:
-                                            od_events_dict["write"].append(nce)
+                                            # in nextcloud an attendee can
+                                            # only modify an event for itself
+                                            # and will not reflect on organizer
+                                            # hence we retrict modification to
+                                            # odoo event by the attendee as
+                                            # well
+                                            if sync_user_id.user_id == od_event.user_id:
+                                                od_events_dict["write"].append(nce)
+                                            else:
+                                                # revert the event of attendee
+                                                # in nextcloud to event of
+                                                # attendee in odoo
+                                                # nc_events_dict["write"].append(
+                                                #     ode)
+
+                                                # Since is not possible to
+                                                # modify the event by the
+                                                # attendee in nextcloud
+                                                log_obj.log_event(
+                                                    message="A Nextcloud event"
+                                                    " has been modified by one"
+                                                    " of its attendee in Nextcloud"
+                                                    " but does not get"
+                                                    " reflected in the organizer"
+                                                    " event. This changes will be"
+                                                    " ignored in Odoo. Event details:"
+                                                    "\n%s" % nce["nc_event"][0]
+                                                )
                                 else:
                                     # Case 3.b: If Odoo has changes
                                     # (nc_synced=False) and to delete
@@ -212,19 +240,22 @@ class Nextcloudcaldav(models.AbstractModel):
                         valid_nc_uid = True
                         break
                 # Case 5: Nextcloud nc_uid is not found in Odoo
-                if not valid_nc_uid:
+                if not valid_nc_uid and sync_user_id.check_nc_event_organizer(
+                    nce["nc_caldav"]
+                ):
                     od_events_dict["create"].append(nce)
         # Case 6: If there is not a single event in Odoo, we create everything
         # from Nextcloud -> Odoo
         if not od_events and nc_events:
-            for ode in nc_events:
-                vevent = ode["nc_caldav"].vobject_instance.vevent
+            for nce in nc_events:
+                vevent = nce["nc_caldav"].vobject_instance.vevent
                 # ignore if cancelled
                 if (
                     "status" not in vevent.contents
                     or vevent.status.value.lower() != "cancelled"
                 ):
-                    od_events_dict["create"].append(ode)
+                    if sync_user_id.check_nc_event_organizer(nce["nc_caldav"]):
+                        od_events_dict["create"].append(nce)
         # Case 7: If there is not a single event in Nextcloud, check if Odoo
         # event has nc_uid value or not
         if od_events and not nc_events:
@@ -239,7 +270,8 @@ class Nextcloudcaldav(models.AbstractModel):
                     # its a previous event in Nextcloud that might have been
                     # deleted
                     if od_event.nc_uid:
-                        od_events_dict["delete"].append(ode)
+                        if sync_user_id.user_id == od_event.user_id:
+                            od_events_dict["delete"].append(ode)
                     else:
                         # Case 7.b: If the event has no nc_uid value then its a
                         # new event in Odoo to be created in Nextcloud
@@ -1255,7 +1287,7 @@ class Nextcloudcaldav(models.AbstractModel):
                         message="Comparing events for '%s'" % user["user_name"]
                     )
                     od_events_dict, nc_events_dict = self.compare_events(
-                        od_events, nc_events, user
+                        od_events, nc_events, user, log_obj
                     )
                     # Log number of operations to do
                     all_stg_events = {

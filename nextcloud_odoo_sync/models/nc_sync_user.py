@@ -336,6 +336,10 @@ class NcSyncUser(models.Model):
                     or (x.partner_ids and user.partner_id in x.partner_ids)
                 )
                 for event in od_event_ids:
+                    # if event is not yet syned into nextcloud but the current
+                    # sync user is only an attendee of the event then the event
+                    # should not be created in nextcloud since it will
+                    # be automatically created by the event organizer
                     if (
                         event.user_id in params["all_sync_user_ids"].mapped("user_id")
                         and not event.nc_uid
@@ -381,14 +385,6 @@ class NcSyncUser(models.Model):
                             }
                         )
                     for item in calendar.events():
-                        if "organizer" in item.instance.vevent.contents:
-                            organizer_email = (
-                                item.instance.vevent.organizer.value.replace(
-                                    "mailto:", ""
-                                )
-                            )
-                            if organizer_email != user.nc_email:
-                                continue
                         event_vals = user.get_event_data(item)
                         result["nc_events"].append(
                             {
@@ -405,6 +401,17 @@ class NcSyncUser(models.Model):
                     return result
                 else:
                     raise ValidationError(_(error))
+
+    def check_nc_event_organizer(self, caldav_event):
+        if "organizer" in caldav_event.instance.vevent.contents:
+            organizer_email = caldav_event.instance.vevent.organizer.value.replace(
+                "mailto:", ""
+            )
+            if organizer_email == self.nc_email:
+                return True
+            else:
+                return False
+        return True
 
     def get_nc_event_hash_by_uid(self, nc_uid):
         for user in self:
