@@ -13,7 +13,7 @@ class CalendarEvent(models.Model):
         nc_calendar_ids = self.env.user.nc_calendar_ids
         values = []
         if nc_calendar_ids:
-            [values.append((x.id, x.name)) for x in nc_calendar_ids]
+            [values.append((str(x.id), x.name)) for x in nc_calendar_ids]
         return values
 
     nc_uid = fields.Char("UID")
@@ -80,7 +80,7 @@ class CalendarEvent(models.Model):
                 if calendar_id:
                     calendar = calendar_id.ids[0]
             event.nc_calendar_id = calendar
-            event.nc_calendar_select = calendar
+            event.nc_calendar_select = str(calendar) if calendar else False
 
     @api.depends("duration", "partner_ids", "user_id")
     def _compute_nc_require_calendar(self):
@@ -109,7 +109,7 @@ class CalendarEvent(models.Model):
                     .mapped("nc_calendar_id")
                 )
                 if default_calendar_id and self.user_id == self.env.user:
-                    self.nc_calendar_select = default_calendar_id.id
+                    self.nc_calendar_select = str(default_calendar_id.id)
             else:
                 self.nc_calendar_select = False
                 self.nc_calendar_ids = False
