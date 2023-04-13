@@ -62,11 +62,10 @@ class NcSyncLog(models.Model):
         :param sync_log_id: single recordset of nc.sync.log model
         :return: List, NextCloud users that are in linked in Odoo
         """
+        nc_sync_user_obj = self.env["nc.sync.user"]
         nc_users = self.env["nextcloud.base"].get_users()["ocs"]["data"]["users"]
         nc_user_email = [nc["id"] for nc in nc_users] + [nc["email"] for nc in nc_users]
-        odoo_users = self.env["nc.sync.user"].search_read(
-            [("sync_calendar", "=", True)]
-        )
+        odoo_users = nc_sync_user_obj.search_read([("sync_calendar", "=", True)])
         stg_users_odoo_not_in_nc = [
             x for x in odoo_users if x["user_name"] not in nc_user_email
         ]
@@ -116,7 +115,7 @@ class NcSyncLog(models.Model):
                     user_list.append(nc_user["id"].lower())
                 if odoo_user["user_name"].lower() in user_list:
                     stg_users_nc_in_odoo.append(odoo_user)
-                    self.env["nc.sync.user"].browse(odoo_user["id"]).write(
+                    nc_sync_user_obj.browse(odoo_user["id"]).write(
                         {"nextcloud_user_id": nc_user["id"]}
                     )
 
@@ -155,10 +154,11 @@ class NcSyncLog(models.Model):
         caldav_obj = self.env["nextcloud.caldav"]
         if mode == "pre_sync":
             # Start Sync Process: Date + Time
-            log_id = self.env["nc.sync.log"].create(
+            datetime_now = datetime.now()
+            log_id = self.create(
                 {
-                    "name": datetime.now().strftime("%Y%m%d-%H%M%S"),
-                    "date_start": datetime.now(),
+                    "name": datetime_now.strftime("%Y%m%d-%H%M%S"),
+                    "date_start": datetime_now,
                     "state": "connecting",
                     "next_cloud_url": nc_url,
                     "odoo_url": odoo_url,

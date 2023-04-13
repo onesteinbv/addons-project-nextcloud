@@ -4,9 +4,7 @@
 import logging
 import requests
 import pytz
-import hashlib
 import ast
-import json
 from odoo.tools import html2plaintext
 from dateutil.parser import parse
 from datetime import datetime, timedelta, date as dtdate
@@ -77,10 +75,21 @@ class Nextcloudcaldav(models.AbstractModel):
         od_events_dict = {"create": [], "write": [], "delete": []}
         nc_events_dict = {"create": [], "write": [], "delete": []}
 
-        od_event = self.env["calendar.event"]
         # Compare Odoo events to sync
         if od_events and nc_events:
             # Odoo -> Nextcloud
+            try:
+                nc_event_status_confirmed_id = self.env.ref(
+                    "nextcloud_odoo_sync.nc_event_status_confirmed"
+                )
+            except BaseException:
+                raise ValidationError(
+                    _(
+                        "Missing value for Confirmed status."
+                        "Consider upgrading the nextcloud_odoo_sync"
+                        "module and try again"
+                    )
+                )
             for odoo_event in od_events:
                 ode = odoo_event.copy()
                 # Case 1: Event created in Odoo and not yet synced to Nextcloud
@@ -88,18 +97,7 @@ class Nextcloudcaldav(models.AbstractModel):
                 od_event = ode["od_event"]
                 if not ode["nc_uid"] and not od_event.nc_synced:
                     if not od_event.nc_status_id:
-                        try:
-                            od_event.nc_status_id = self.env.ref(
-                                "nextcloud_odoo_sync.nc_event_status_confirmed"
-                            ).id
-                        except BaseException:
-                            raise ValidationError(
-                                _(
-                                    "Missing value for Confirmed status."
-                                    "Consider upgrading the nextcloud_odoo_sync"
-                                    "module and try again"
-                                )
-                            )
+                        od_event.nc_status_id = nc_event_status_confirmed_id.id
                     if (
                         od_event.nc_status_id
                         and od_event.nc_status_id.name.lower() != "canceled"
@@ -279,7 +277,7 @@ class Nextcloudcaldav(models.AbstractModel):
         return od_events_dict, nc_events_dict
 
     def check_duplicate(self, nc_events, ode):
-        result = False
+        result = {}
         fields = {"name": "SUMMARY", "start": "DTSTART", "stop": "DTEND"}
         d = 0
         for f in fields:
@@ -318,6 +316,8 @@ class Nextcloudcaldav(models.AbstractModel):
         all_sync_user_ids = params.get("all_sync_user_ids", False)
         all_partner_ids = params.get("all_partner_ids", False)
         attendee_partner_ids = []
+        nc_sync_user_obj = self.env["nc.sync.user"]
+        res_partner_obj = self.env["res.partner"]
         # Get attendees for Odoo event
         if isinstance(calendar_event, caldav.objects.Event):
             # In Odoo, we add the organizer are part of the meeting attendee
@@ -336,11 +336,9 @@ class Nextcloudcaldav(models.AbstractModel):
                 email = att.split(":")[-1].lower()
                 if email != "false":
                     # Check if an Odoo user has the same email address
-                    att_user_id = (
-                        self.env["nc.sync.user"]
-                        .search([("nc_email", "=", email)], limit=1)
-                        .user_id
-                    )
+                    att_user_id = nc_sync_user_obj.search(
+                        [("nc_email", "=", email)], limit=1
+                    ).user_id
                     if not att_user_id:
                         att_user_id = all_user_ids.filtered(
                             lambda x: x.partner_id.email
@@ -354,9 +352,9 @@ class Nextcloudcaldav(models.AbstractModel):
                         )
                         if sync_user_id:
                             attendee_partner_ids.append(
-                                self.env["nc.sync.user"]
-                                .browse(sync_user_id.ids[0])
-                                .user_id.partner_id.id
+                                nc_sync_user_obj.browse(
+                                    sync_user_id.ids[0]
+                                ).user_id.partner_id.id
                             )
                         else:
                             attendee_partner_ids.append(
@@ -370,7 +368,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                 att_user_id.partner_id.email = email
                             attendee_partner_ids.append(att_user_id.partner_id.id)
                         else:
-                            contact_id = self.env["res.partner"].create(
+                            contact_id = res_partner_obj.create(
                                 {"name": email, "email": email, "nc_sync": True}
                             )
                             all_partner_ids |= contact_id
@@ -546,6 +544,7 @@ class Nextcloudcaldav(models.AbstractModel):
         """
         # Update the hash value of the Odoo event that corresponds to the
         # current user_id
+        calendar_event_nc_hash_obj = self.env["calendar.event.nchash"]
         if event_ids:
             event_ids.nc_synced = True
             for event in event_ids:
@@ -557,7 +556,7 @@ class Nextcloudcaldav(models.AbstractModel):
                 else:
                     # Create the hash value for the event if not exist
                     hash_vals["calendar_event_id"] = event.id
-                    self.env["calendar.event.nchash"].create(hash_vals)
+                    calendar_event_nc_hash_obj.create(hash_vals)
 
         elif not event_ids and "principal" in hash_vals:
             events_hash = hash_vals["events"]
@@ -635,8 +634,12 @@ class Nextcloudcaldav(models.AbstractModel):
         log_obj = params["log_obj"]
         user_id = sync_user_id.user_id
         user_name = sync_user_id.user_id.name
+        nc_event_status_confirmed_id = self.env.ref(
+            "nextcloud_odoo_sync.nc_event_status_confirmed"
+        )
         for operation in od_events_dict:
             for event in od_events_dict[operation]:
+                all_odoo_event_type_ids = params.get("all_odoo_event_type_ids", False)
                 od_event_id = event["od_event"] if "od_event" in event else False
                 nc_event = event["nc_event"] if "nc_event" in event else False
                 caldav_event = event["nc_caldav"] if "nc_caldav" in event else False
@@ -646,7 +649,6 @@ class Nextcloudcaldav(models.AbstractModel):
                     for vevent in nc_event:
                         vals = {"nc_uid": event["nc_uid"]}
                         nc_uid = event["nc_uid"]
-                        new_event_id = False
                         all_day = False
                         # Loop through each fields from the Nextcloud event and
                         # map it to Odoo fields
@@ -670,8 +672,11 @@ class Nextcloudcaldav(models.AbstractModel):
                                 elif field[0] == "valarm":
                                     data = self.get_odoo_alarms(vevent.get(e, []))
                                 elif field[0] == "categories":
-                                    data = self.get_odoo_categories(
-                                        self.env["calendar.event.type"].search([]),
+                                    (
+                                        data,
+                                        params["all_odoo_event_type_ids"],
+                                    ) = self.get_odoo_categories(
+                                        all_odoo_event_type_ids,
                                         vevent[e],
                                     )
                                 elif field[0] == "rrule":
@@ -729,9 +734,7 @@ class Nextcloudcaldav(models.AbstractModel):
                             vals["alarm_ids"] = [(6, 0, [])]
                         # Set the status
                         if "nc_status_id" not in vals:
-                            vals["nc_status_id"] = self.env.ref(
-                                "nextcloud_odoo_sync.nc_event_status_confirmed"
-                            ).id
+                            vals["nc_status_id"] = nc_event_status_confirmed_id.id
                         # Populate attendees and rest of remaining fields
                         event_name = vals.get("name", "Untitled event")
                         vals.pop("write_date", False)
@@ -890,9 +893,10 @@ class Nextcloudcaldav(models.AbstractModel):
         :param **params: dictionary of keyword arguments containing
                 multiple recordset of models
         """
+        calendar_event_obj = self.env["calendar.event"]
         connection = params.get("connection", False)
         principal = params.get("principal", False)
-        fields = self.env["calendar.event"]._fields
+        fields = calendar_event_obj._fields
         update_events_hash = {}
         # Reverse the mapping of the field in get_caldav_fiels() method for
         # Odoo -> Nextcloud direction
@@ -925,9 +929,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                     key=lambda r: r.id
                                 )
                             )
-                            event_id = self.env["calendar.event"].browse(
-                                event_ids.ids[0]
-                            )
+                            event_id = calendar_event_obj.browse(event_ids.ids[0])
                 attendees = []
                 vals = {}
                 # Loop through each fields from the Nextcloud event and map it
@@ -1253,6 +1255,7 @@ class Nextcloudcaldav(models.AbstractModel):
             "all_user_ids": self.env["res.users"].search([]),
             "all_sync_user_ids": self.env["nc.sync.user"].search([]),
             "all_partner_ids": self.env["res.partner"].search([("email", "!=", False)]),
+            "all_odoo_event_type_ids": self.env["calendar.event.type"].search([]),
             "status_vals": {
                 "confirmed": self.env.ref(
                     "nextcloud_odoo_sync.nc_event_status_confirmed"
@@ -1423,8 +1426,9 @@ class Nextcloudcaldav(models.AbstractModel):
             category_id = categ_ids.filtered(lambda x: x.name.lower() == category)
             if not category_id:
                 category_id = categ_ids.create({"name": category})
+                categ_ids |= category_id
             result.append(category_id.id)
-        return [(6, 0, result)]
+        return [(6, 0, result)], categ_ids
 
     def get_caldav_fields(self):
         """
