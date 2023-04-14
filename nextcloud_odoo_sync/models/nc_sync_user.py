@@ -56,6 +56,10 @@ class NcSyncUser(models.Model):
 
     @api.constrains("user_id", "user_name")
     def check_user_exist(self):
+        """
+        Checks if user information is already exists
+        :return error if record already exist
+        """
         for user in self:
             sync_user_id = self.search(
                 [
@@ -78,6 +82,9 @@ class NcSyncUser(models.Model):
 
     @api.onchange("nc_calendar_id")
     def onchange_nc_calendar_id(self):
+        """
+        Update user message upon changing nextclound calenda
+        """
         if self.nc_calendar_id:
             self.sync_calendar = True
             self.user_message = (
@@ -93,6 +100,11 @@ class NcSyncUser(models.Model):
             )
 
     def write(self, vals):
+        """
+        Inherited odoo base function
+        :param vals: Dictionary of record changes
+        :return add changes into this predefined functions
+        """
         if "nc_calendar_id" in vals:
             calendar_event_ids = (
                 self.env["calendar.event"]
@@ -123,6 +135,10 @@ class NcSyncUser(models.Model):
         return super(NcSyncUser, self).write(vals)
 
     def unlink(self):
+        """
+        Inherited odoo base function
+        :return add changes into this predefined functions
+        """
         calendar_event_obj = self.env["calendar.event"]
         sync_user_ids = self.search([]).mapped("user_id")
         for record in self.filtered(lambda x: x.user_id):
@@ -149,13 +165,18 @@ class NcSyncUser(models.Model):
         return super(NcSyncUser, self).unlink()
 
     def save_user_config(self):
-        # Close the pop-up and display the calendar event records
+        """
+        Returns calendar event action. Close the pop-up and display the
+        calendar event records
+        :return calendar event action
+        """
         return self.env.ref("calendar.action_calendar_event").sudo().read()[0]
 
     def get_user_connection(self):
         """
         This method returns the connection and principal
         object from Nextcloud server
+        :return Dictionary, nextcloud user connection
         """
         params = {
             "nextcloud_login": "Login",
@@ -237,6 +258,7 @@ class NcSyncUser(models.Model):
         username and password provided for the user and
         triggers the creation of Nextcloud Calendar record
         for use in creating events in Odoo
+        :return Dictionary, odoo action
         """
         connection_dict = self.sudo().get_user_connection()
         principal = connection_dict.get("principal", False)
@@ -300,6 +322,7 @@ class NcSyncUser(models.Model):
         :param log_id: single recordset of nc.sync.log model
         :params **params: dictionary of multiple recordsets
                 from different models
+        :return Dictionary of odoo and nextcloud events
         """
         events = params["all_odoo_event_ids"]
         log_obj = params["log_obj"]
@@ -398,6 +421,11 @@ class NcSyncUser(models.Model):
                     raise ValidationError(_(error))
 
     def check_nc_event_organizer(self, caldav_event):
+        """
+        Checks if nextcloud organizer is the same with odoo email
+        :param caldav_event: Caldav event data
+        :return Boolean
+        """
         if "organizer" in caldav_event.instance.vevent.contents:
             organizer_email = caldav_event.instance.vevent.organizer.value.replace(
                 "mailto:", ""
@@ -409,6 +437,11 @@ class NcSyncUser(models.Model):
         return True
 
     def get_nc_event_hash_by_uid(self, nc_uid):
+        """
+        Check and get nextcloud event hash using UID
+        :param nc_uid: string, Nextcloud UID
+        :return Event hash
+        """
         nc_calendar_obj = self.env["nc.calendar"]
         for user in self:
             connection_dict = user.get_user_connection()
@@ -431,7 +464,7 @@ class NcSyncUser(models.Model):
                     if calendar.name != nc_calendar_id.name:
                         nc_calendar_id.name = calendar.name
                 else:
-                    self.env["nc.calendar"].sudo().create(
+                    nc_calendar_obj.sudo().create(
                         {
                             "name": calendar.name,
                             "user_id": user.user_id.id,

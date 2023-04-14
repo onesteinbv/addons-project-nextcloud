@@ -44,6 +44,12 @@ class CalendarEvent(models.Model):
 
     @api.model
     def default_get(self, fields):
+        """
+        Inherited odoo base function: Added event status default value
+        to 'Confirmed'
+        :param fields: Odoo base fields
+        :return Super: add changes into this predefined functions
+        """
         res = super(CalendarEvent, self).default_get(fields)
         res["nc_status_id"] = self.env.ref(
             "nextcloud_odoo_sync.nc_event_status_confirmed"
@@ -155,6 +161,11 @@ class CalendarEvent(models.Model):
 
     @api.model
     def create(self, vals):
+        """
+        Inherited odoo base function
+        :params vals: Dictionary of record changes
+        :return Super: add changes into this predefined functions
+        """
         # Handle untitled event since Nextcloud event
         # can be saved without title
         if "name" not in vals or not vals["name"]:
@@ -176,6 +187,11 @@ class CalendarEvent(models.Model):
         return res
 
     def write(self, vals):
+        """
+        Inherited odoo base function
+        :params vals: Dictionary of record changes
+        :return Super: add changes into this predefined functions
+        """
         if not self._context.get("sync", False) and "nc_synced" not in vals:
             vals["nc_synced"] = False
         for record in self:

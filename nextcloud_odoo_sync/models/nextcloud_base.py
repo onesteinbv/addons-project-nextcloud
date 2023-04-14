@@ -16,6 +16,10 @@ class NextcloudBase(models.AbstractModel):
     """
 
     def get_auth_data(self):
+        """
+        Get and return nextcloud authentication data
+        :return Dictionary: nextcloud authentication data
+        """
         config_obj = self.env["ir.config_parameter"]
         data = {
             "h_get": {"OCS-APIRequest": "true"},
@@ -52,6 +56,11 @@ class NextcloudBase(models.AbstractModel):
         return res
 
     def rtn(self, resp):
+        """
+        converts response a json format
+        :param resp: api response
+        :return json api response
+        """
         return resp.json()
 
     def get(self, url="", params=None):
@@ -74,7 +83,7 @@ class NextcloudBase(models.AbstractModel):
         :param search: string, optional search string
         :param limit: int, optional limit value
         :param offset: int, optional offset value
-        :return:
+        :return: List of users info
         """
         params = {"search": search, "limit": limit, "offset": offset}
         result = self.get(params=params)
@@ -90,7 +99,7 @@ class NextcloudBase(models.AbstractModel):
         """
         Retrieve information about a single user
         :param uid: str, uid of user
-        :return:
+        :return: Dictionary of user info
         """
         result = self.get("{uid}".format(uid=uid))
         return result["ocs"]["data"]

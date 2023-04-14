@@ -25,23 +25,16 @@ class Nextcloudcaldav(models.AbstractModel):
     _name = "nextcloud.caldav"
     _description = "Caldav methods"
 
-    def get_caldav_credentials(self):
-        config = self.env["ir.config_parameter"].sudo()
-        res = {
-            "url": config.get_param("nextcloud_odoo_sync.nextcloud_url")
-            + "/remote.php/dav",
-            "username": config.get_param("nextcloud_odoo_sync.nextcloud_login"),
-            "pw": config.get_param("nextcloud_odoo_sync.nextcloud_password"),
-            "enabled": config.get_param("nextcloud_odoo_sync.enable_calendar_sync"),
-        }
-        return res
-
     def compare_events(self, od_events, nc_events, sync_user_id, log_obj):
         """
         This method compares the Odoo and Nextcloud events and returns
         the value to be created, modified or delete
         :param od_events: list of dictionary of Odoo events
         :param nc_events: list of dictionary of Nexcloud events
+        :param sync_user_id: Recordset of the current sync user (nc.sync.user)
+        :param log_obj: Recordset of the Sync Activity (nc.sync.log)
+        :param return: value to be created, modified or delete
+                        for odoo and nextcloud (Tuple)
         Case summary:
         Nextcloud
             - If event hash value changes from hash value recorded in
@@ -277,6 +270,12 @@ class Nextcloudcaldav(models.AbstractModel):
         return od_events_dict, nc_events_dict
 
     def check_duplicate(self, nc_events, ode):
+        """
+        Check and returns one record on a dulicated event
+        :param nc_events: List of caldav nextcloud event
+        :param ode: Odoo event data in a dictionary
+        :return caldav nextcloud event in a dictionary
+        """
         result = {}
         fields = {"name": "SUMMARY", "start": "DTSTART", "stop": "DTEND"}
         d = 0
@@ -318,6 +317,7 @@ class Nextcloudcaldav(models.AbstractModel):
         attendee_partner_ids = []
         nc_sync_user_obj = self.env["nc.sync.user"]
         res_partner_obj = self.env["res.partner"]
+        res_users_obj = self.env["res.users"]
         # Get attendees for Odoo event
         if isinstance(calendar_event, caldav.objects.Event):
             # In Odoo, we add the organizer are part of the meeting attendee
@@ -358,9 +358,7 @@ class Nextcloudcaldav(models.AbstractModel):
                             )
                         else:
                             attendee_partner_ids.append(
-                                self.env["res.users"]
-                                .browse(user_id.ids[0])
-                                .partner_id.id
+                                res_users_obj.browse(user_id.ids[0]).partner_id.id
                             )
                     else:
                         if att_user_id:
@@ -464,6 +462,7 @@ class Nextcloudcaldav(models.AbstractModel):
         of a recurring event
         :param event_dict: dictionary, Odoo and Nextcloud events
         :param operation: string, indicate create, write or delete operation
+        :param vals: Dictionary of event values
         :return single recordset of calendar.event model,
                 string, dictionary of values
         """
@@ -522,8 +521,8 @@ class Nextcloudcaldav(models.AbstractModel):
     def get_rrule_dict(self, rrule):
         """
         This method converts the rrule string into a dictionary of values
-        :param rrule: string
-        :return dict
+        :param rrule: Recurring rule (string)
+        :return rrule dictionary
         """
         rrule = rrule.split(":")[-1]
         result = {}
@@ -628,6 +627,7 @@ class Nextcloudcaldav(models.AbstractModel):
         """
         all_odoo_event_ids = params.get("all_odoo_event_ids", False)
         all_nc_calendar_ids = params.get("all_nc_calendar_ids", False)
+        all_odoo_event_type_ids = params.get("all_odoo_event_type_ids", False)
         status_vals = params.get("status_vals", False)
         calendar_event = self.env["calendar.event"].sudo()
         field_mapping = self.get_caldav_fields()
@@ -639,7 +639,6 @@ class Nextcloudcaldav(models.AbstractModel):
         )
         for operation in od_events_dict:
             for event in od_events_dict[operation]:
-                all_odoo_event_type_ids = params.get("all_odoo_event_type_ids", False)
                 od_event_id = event["od_event"] if "od_event" in event else False
                 nc_event = event["nc_event"] if "nc_event" in event else False
                 caldav_event = event["nc_caldav"] if "nc_caldav" in event else False
@@ -1325,6 +1324,14 @@ class Nextcloudcaldav(models.AbstractModel):
             log_obj.write({"description": summary_message, "date_end": datetime.now()})
 
     def add_nc_alarm_data(self, event, valarm):
+        """
+        This method adds reminders on a nextcloud event
+        :param event: Caldav Nextcloud event
+        :param valarm: list of event reminders/alarms
+                operations for Nextcloud
+        :return event: returns a Caldav Nextcloud event with the
+                    corresponding reminders
+        """
         if valarm:
             event.vobject_instance.vevent.contents.pop("valarm", False)
             for item in valarm:
@@ -1335,6 +1342,14 @@ class Nextcloudcaldav(models.AbstractModel):
         return event
 
     def get_user_calendar(self, connection, connection_principal, nc_calendar):
+        """
+        This record gets the Caldav record on the event besed on the name.
+        It will create a new calendar record in nextcloud if it does not exist
+        :param connection: Caldav user connection data
+        :param connection_principal: Caldav user connection principal data
+        :param nc_calendar: Calendar name (String)
+        :return calendar_obj: Caldav calendar object
+        """
         principal_calendar_obj = False
         try:
             principal_calendar_obj = connection_principal.calendar(name=nc_calendar)
@@ -1421,6 +1436,13 @@ class Nextcloudcaldav(models.AbstractModel):
         return [(6, 0, result)]
 
     def get_odoo_categories(self, categ_ids, value):
+        """
+        This method returns the corresponding odoo data result
+        for categ_ids field
+        :param categ_ids: categories record set
+        :param value: comma separated string of categories
+        :return odoo value for categ_ids and updated value for categ_ids
+        """
         result = []
         for category in value.lower().split(","):
             category_id = categ_ids.filtered(lambda x: x.name.lower() == category)
