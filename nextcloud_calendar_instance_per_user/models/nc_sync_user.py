@@ -13,14 +13,22 @@ class NcSyncUser(models.Model):
     @api.model
     def default_get(self, fields):
         """
-        Inherited odoo base function: Added event status default value
-        to 'Confirmed'
-        :param fields: Odoo base fields
-        :return Super: add changes into this predefined functions
+        Inherited to add default server url for each of the users
         """
         res = super(NcSyncUser, self).default_get(fields)
         res["nextcloud_url"] = self.env["ir.config_parameter"].sudo().get_param("nextcloud_odoo_sync.nextcloud_url")
         return res
+
+    @api.model
+    def create(self, vals):
+        if vals.get('nextcloud_url',False):
+            vals["nextcloud_url"] = vals["nextcloud_url"].strip("/")
+        return super(NcSyncUser, self).create(vals)
+
+    def write(self, vals):
+        if vals.get('nextcloud_url',False):
+            vals["nextcloud_url"] = vals["nextcloud_url"].strip("/")
+        return super(NcSyncUser, self).write(vals)
 
     def get_user_connection(self):
         """

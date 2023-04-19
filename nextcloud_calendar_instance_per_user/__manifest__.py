@@ -15,4 +15,5 @@
     "data": [
         "views/nc_sync_user_views.xml",
     ],
+    "post_init_hook": "populate_nextcloud_url",
 }
