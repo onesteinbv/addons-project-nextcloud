@@ -9,11 +9,12 @@
     "author": "Onestein",
     "website": "https://github.com/OCA/vertical-association",
     "license": "AGPL-3",
-    "application": False,
+    "application": True,
     "installable": True,
     "depends": ["nextcloud_odoo_sync"],
     "data": [
         "views/nc_sync_user_views.xml",
     ],
     "post_init_hook": "populate_nextcloud_url",
+    "uninstall_hook": "uninstall_hook",
 }
