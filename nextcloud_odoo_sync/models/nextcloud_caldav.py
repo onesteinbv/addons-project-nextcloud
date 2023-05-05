@@ -405,7 +405,9 @@ class Nextcloudcaldav(models.AbstractModel):
             params["nc_user_ids"] = nc_user_ids
         return attendee_partner_ids, params
 
-    def get_event_datetime(self, nc_field, nc_value, vals, od_event=False):
+    def get_event_datetime(
+        self, nc_field, nc_value, vals, od_event=False, nc_event=False
+    ):
         """
         This method will parse the Nextcloud event date,
         convert it to datetime in UTC timezone
@@ -416,45 +418,68 @@ class Nextcloudcaldav(models.AbstractModel):
         :return: date, datetime or string
         """
         try:
-            tz = nc_field[-1].split("=")[-1]
-            if tz not in ("date", "exdates"):
-                if "Z" in nc_value:
-                    nc_value = nc_value.replace("Z", "")
-                date_value = parse(nc_value)
-                if (
-                    od_event
-                    and od_event.allday
-                    and not isinstance(date_value, datetime)
-                ):
-                    data = date_value.date()
-                else:
-                    data = self.convert_date(date_value, tz, "utc")
-                return data
-            elif tz == "exdates" and isinstance(nc_value, list) and "exdate_tz" in vals:
-                data = []
-                all_day = False
-                if od_event and od_event.allday:
-                    all_day = True
-                for item in nc_value:
-                    if "Z" in item:
-                        item = item.replace("Z", "")
-                    date_value = parse(item)
-                    if vals["exdate_tz"]:
-                        date_value = self.convert_date(
-                            parse(item), vals["exdate_tz"], "utc"
+            recurrence = [x for x in list(vals) if "RECURRENCE-ID" in x]
+            for key in ["LAST-MODIFIED", "DTSTART", "DTEND", "CREATED", "EXDATE"]:
+                if recurrence and key in ["DTSTART", "DTEND"]:
+                    # Cannot get the calendar event for single recurring instance
+                    # hence we revent to string manipulation of date
+                    return self.get_recurrence_id_date(nc_field, nc_value, od_event)
+                elif key in nc_field[0].upper():
+                    if "EXDATE" in key:
+                        exdate_val = nc_event.icalendar_component.get(key)
+                        date = (
+                            [exdate_val]
+                            if not isinstance(exdate_val, list)
+                            else exdate_val
                         )
-                    if all_day and isinstance(date_value, datetime):
-                        date_value = parse(item).date()
-                    data.append(date_value)
-                return data
-            else:
-                data = parse(nc_value).date()
-                if nc_field[0] == "dtend":
-                    data = data - timedelta(days=1)
-                return data
+                    else:
+                        date = nc_event.icalendar_component.get(key).dt
+                    if isinstance(date, datetime):
+                        tz = date.tzinfo.zone
+                        if tz != "UTC":
+                            date = date.astimezone(pytz.utc)
+                    elif isinstance(date, list):
+                        data = []
+                        all_day = False
+                        if od_event and od_event.allday:
+                            all_day = True
+                        for exdate in date:
+                            for item in exdate.dts:
+                                date_data = item.dt
+                                tz = date_data.tzinfo.zone
+                                if tz != "UTC":
+                                    date_data = date_data.astimezone(pytz.utc)
+                                if all_day and isinstance(date_data, datetime):
+                                    date_data = date_data.date()
+                                data.append(date_data.replace(tzinfo=None))
+                        return data
+                    else:
+                        if key == "DTEND":
+                            date = date - timedelta(days=1)
+                        return date
+                    return date.replace(tzinfo=None)
+            return nc_value
         except Exception as e:
             _logger.warning(e)
             return nc_value
+
+    def get_recurrence_id_date(self, nc_field, nc_value, od_event_id):
+        """
+        This method will parse the recurrence ID, convert to UTC
+        :param: nc_field: Nextcloud ical data field name
+        :param: nc_value: Nextcloud ical data field value
+        :param: od_event_id: single recordset of calendar.event model
+        :return: date or datetime
+        """
+        tz = nc_field[-1].split("=")[-1]
+        if "Z" in nc_value:
+            nc_value = nc_value.replace("Z", "")
+        date_value = parse(nc_value)
+        if od_event_id and od_event_id.allday and not isinstance(date_value, datetime):
+            data = date_value.date()
+        else:
+            data = self.convert_date(date_value, tz, "utc")
+        return data
 
     def manage_recurring_instance(self, event_dict, operation, vals):
         """
@@ -655,7 +680,7 @@ class Nextcloudcaldav(models.AbstractModel):
                             field = e.lower().split(";")
                             if field[0] in field_mapping or field[0] == "exdates":
                                 data = self.get_event_datetime(
-                                    field, vevent[e], vevent, od_event_id
+                                    field, vevent[e], vevent, od_event_id, caldav_event
                                 )
                                 if field[0] == "dtstart" and not isinstance(
                                     data, datetime
@@ -693,6 +718,11 @@ class Nextcloudcaldav(models.AbstractModel):
                                         exdates[nc_uid].append(item)
                                     data = False
                                 elif field[0] == "recurrence-id" and data:
+                                    data = self.get_recurrence_id_date(
+                                        field, vevent[e], od_event_id
+                                    )
+                                    # Convert it back to string for matching
+                                    # with nc_rid field of calendar.event model
                                     if isinstance(data, datetime):
                                         data = data.strftime("%Y%m%dT%H%M%S")
                                     else:
@@ -1370,6 +1400,14 @@ class Nextcloudcaldav(models.AbstractModel):
         with caldav.DAVClient(url=url, username=username, password=password) as client:
             try:
                 return client, client.principal()
+            except caldav.lib.error.NotFoundError as e:
+                _logger.warning("Error: %s" % e)
+                return client, {
+                    "sync_error_id": self.env.ref(
+                        "nextcloud_odoo_sync.nc_sync_error_1001"
+                    ),
+                    "response_description": str(e),
+                }
             except caldav.lib.error.AuthorizationError as e:
                 _logger.warning("Error: %s" % e)
                 return client, {

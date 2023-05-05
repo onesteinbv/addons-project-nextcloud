@@ -8,7 +8,7 @@ class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
     enable_calendar_sync = fields.Boolean(
-        "Enable Calendar Syc",
+        "Enable Calendar Sync",
         config_parameter="nextcloud_odoo_sync.enable_calendar_sync",
     )
     nextcloud_url = fields.Char(string="Server URL")

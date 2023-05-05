@@ -71,12 +71,6 @@ class NextcloudBase(models.AbstractModel):
         )
         return self.rtn(res)
 
-    def post(self, url="", params=None):
-        url = self.get_full_url(url, self.api_url)
-        data = self.get_auth_data()
-        res = request.post(url, auth=data["auth_pk"], data=data, headers=data["h_post"])
-        return self.rtn(res)
-
     def get_users(self, search=None, limit=None, offset=None):
         """
         Retrieve a list of users from the Nextcloud server
