@@ -22,7 +22,6 @@
 			     	<group>
 			     		<group string="Additional Fields">
 					     	<field name="nc_color"/>
-					     	<field name="nc_resources_id"/>
 					     	<field name="nc_synced"/>
 					     	<field name="nc_to_delete"/>
 					     	<field name="nc_allday"/>

@@ -5,7 +5,12 @@
         <field name="inherit_id" ref="base.view_users_form_simple_modif"/>
         <field name="arch" type="xml">
 			<xpath expr="//group[@name='signature']" position="after">
-				<button name="setup_nc_sync_user" string="Setup Nextcloud User" type="object" class="btn btn-primary"/>
+				<group>
+					<button name="setup_nc_sync_user" string="Setup Nextcloud User" type="object" class="btn btn-primary"/>
+				</group>
+				<group>
+					<button name="sync_user_events" string="Sync my events" type="object" class="btn btn-primary"/>
+				</group>
 			</xpath>
       	</field>
 	</record>

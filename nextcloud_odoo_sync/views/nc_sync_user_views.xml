@@ -70,8 +70,8 @@
 	</record>
 
 	<menuitem name="Nextcloud Sync" id="menu_main_nextcloud"
-		groups="nextcloud_odoo_sync.res_group_nextcloud_sync_user"
-		sequence="1" web_icon="nextcloud_odoo_sync,static/description/menu_icon.png"/>
+		groups="nextcloud_odoo_sync.group_nextcloud_sync_admin"
+		sequence="1" web_icon="nextcloud_odoo_sync,static/description/icon.png"/>
 
 	<menuitem
 		id="menu_main_nextcloud_config"

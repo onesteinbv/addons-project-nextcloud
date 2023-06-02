@@ -1269,6 +1269,7 @@ class Nextcloudcaldav(models.AbstractModel):
         This method triggers the sync event operation
         """
         self = self.sudo()
+        per_user_id = self._context.get("per_user", False)
         # Start Sync Process: Date + Time
         sync_start = datetime.now()
         result = self.env["nc.sync.log"].log_event("pre_sync")
@@ -1303,7 +1304,10 @@ class Nextcloudcaldav(models.AbstractModel):
         }
 
         if result["log_id"] and result["resume"]:
-            sync_users = self.env["nc.sync.user"].search([("sync_calendar", "=", True)])
+            sync_users_domain = [("sync_calendar", "=", True)]
+            if per_user_id:
+                sync_users_domain.append(("user_id", "=", per_user_id.id))
+            sync_users = self.env["nc.sync.user"].search(sync_users_domain)
             for user in sync_users:
                 # Get all events from Odoo and Nextcloud
                 log_obj.log_event(message="Getting events for '%s'" % user.user_id.name)

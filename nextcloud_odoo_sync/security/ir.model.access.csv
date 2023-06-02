@@ -1,6 +1,6 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_nextcloud_sync_user_all,access.nextcloud.sync.user.all,model_nc_sync_user,base.group_user,1,1,1,0
-access_nextcloud_sync_user_user,access.nextcloud.sync.user.user,model_nc_sync_user,nextcloud_odoo_sync.res_group_nextcloud_sync_user,1,1,1,1
+access_nextcloud_sync_user_user,access.nextcloud.sync.user.user,model_nc_sync_user,base.group_user,1,1,1,1
 access_nextcloud_sync_log_admin,access.nextcloud.sync.log.admin,model_nc_sync_log,nextcloud_odoo_sync.group_nextcloud_sync_admin,1,1,1,1
 access_nextcloud_sync_log_line_admin,access.nextcloud.sync.log.line.admin,model_nc_sync_log_line,nextcloud_odoo_sync.group_nextcloud_sync_admin,1,1,1,1
 access_nextcloud_sync_error_admin,access.nextcloud.sync.error.admin,model_nc_sync_error,base.group_system,1,1,1,1

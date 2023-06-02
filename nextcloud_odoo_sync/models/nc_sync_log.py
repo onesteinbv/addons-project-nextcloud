@@ -1,7 +1,7 @@
 # Copyright (c) 2023 iScale Solutions Inc.
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from odoo import models, fields
 
 import logging
@@ -12,7 +12,7 @@ _logger = logging.getLogger(__name__)
 class NcSyncLog(models.Model):
     _name = "nc.sync.log"
     _description = "Nextcloud Sync Log"
-    _order = "create_date, desc"
+    _order = "create_date desc"
 
     name = fields.Char(string="Sync code")
     description = fields.Char()
@@ -248,6 +248,20 @@ class NcSyncLog(models.Model):
         # Commit the changes to the database
         self.env.cr.commit()
         return result
+
+    def delete_logs(self):
+        config = self.env["ir.config_parameter"].sudo()
+        capacity_value = (
+            7
+            if not config.get_param("nextcloud_odoo_sync.log_capacity")
+            else config.get_param("nextcloud_odoo_sync.log_capacity")
+        )
+        date_capacity = datetime.now() - timedelta(days=int(capacity_value))
+        date_capacity = date_capacity.strftime("%Y-%m-%d %H:%M:%S")
+        sync_log_ids = self.search(
+            [("create_date", "<", date_capacity)], order="create_date desc"
+        )
+        sync_log_ids.unlink()
 
 
 class NcSyncLogLine(models.Model):

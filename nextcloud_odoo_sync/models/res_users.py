@@ -2,6 +2,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 from odoo import models, fields
+from odoo.exceptions import UserError
 
 
 class ResUsers(models.Model):
@@ -24,3 +25,21 @@ class ResUsers(models.Model):
         if nc_sync_user_id:
             action["res_id"] = nc_sync_user_id.id
         return action
+
+    def sync_user_events(self):
+        sync_users = self.env["nc.sync.user"].search([("user_id", "=", self.id)])
+        if not sync_users:
+            raise UserError("Sync User not found")
+        elif sync_users and not sync_users.sync_calendar:
+            raise UserError("Sync Calendar is not enabled for this User")
+        self.env["nextcloud.caldav"].with_context({"per_user": self}).sync_cron()
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": ("Nextcloud Sync"),
+                "message": "Sync Done",
+                "type": "success",
+                "sticky": False,
+            },
+        }

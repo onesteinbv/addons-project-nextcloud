@@ -16,6 +16,7 @@
         "data/nc_sync_error_data.xml",
         "data/nc_event_status_data.xml",
         "data/nextcloud_odoo_sync_cron_data.xml",
+        "data/nc_sync_log_capacity_cron_data.xml",
         "data/calendar_alarm_data.xml",
         "data/calendar_event_type_data.xml",
         "security/ir.model.access.csv",

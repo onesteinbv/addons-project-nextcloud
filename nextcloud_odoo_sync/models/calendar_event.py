@@ -30,7 +30,6 @@ class CalendarEvent(models.Model):
         "nc.calendar", "Nextcloud Calendar", compute="_compute_nc_calendar"
     )
     nc_status_id = fields.Many2one("nc.event.status", string="Status")
-    nc_resources_id = fields.Many2one("resource.resource", string="Resources")
     nc_calendar_ids = fields.Many2many("nc.calendar", string="Calendars")
     nc_hash_ids = fields.One2many(
         "calendar.event.nchash", "calendar_event_id", "Hash Values"

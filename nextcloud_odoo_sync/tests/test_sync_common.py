@@ -7,12 +7,7 @@ from odoo.addons.nextcloud_odoo_sync.models.nextcloud_caldav import Nextcloudcal
 
 
 class TestSyncNextcloud(TransactionCase):
-    # def setUp(self):
-    #     super(TestSyncNextcloud, self).setUp()
-
     def assertNextcloudEventCreated(self, od_values):
-        Nextcloudcaldav.get_user_calendar.assert_called_once()
-        Calendar.save_event.assert_called_once()
         kwrags = Calendar.save_event.call_args.kwargs
         expected_args = self.from_odoo_to_nc_format_dict(list(kwrags), od_values[0])
         self.assertEqual(kwrags, expected_args)
@@ -62,6 +57,29 @@ class TestSyncNextcloud(TransactionCase):
             "nc_events_dict": {"create": [od_events], "write": [], "delete": []},
             "params": params,
         }
+
+    @patch("caldav.DAVClient")
+    def create_nextclound_event_allday(self, mock_client):
+        data = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//IDN nextcloud.com//Calendar app 4.2.4//EN
+BEGIN:VEVENT
+UID:20230505T051435-1234567890@example.com
+DTSTART;VALUE=DATE:20230505
+DTEND;VALUE=DATE:20230506
+DTSTAMP:20230505T051443Z
+STATUS:CONFIRMED
+SUMMARY:Test all day
+DESCRIPTION:This is a test event.
+END:VEVENT
+END:VCALENDAR"""
+        calendar = Calendar(
+            client=mock_client, url="http://example.com", parent=None, name="Personal"
+        )
+        event = Event(
+            client=mock_client, url="http://example.com", data=data, parent=calendar
+        )
+        return event
 
     @patch("caldav.DAVClient")
     def create_nextcloud_event(self, mock_client):

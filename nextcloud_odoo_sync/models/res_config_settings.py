@@ -22,17 +22,22 @@ class ResConfigSettings(models.TransientModel):
         [("online", "Online"), ("fail", "Failed to login")], "Connection Status"
     )
     nextcloud_error = fields.Text("Error")
+    log_capacity = fields.Integer(
+        string="Log Capacity",
+        default=7,
+        config_parameter="nextcloud_odoo_sync.log_capacity",
+    )
 
     @api.model
     def set_values(self):
         res = super(ResConfigSettings, self).set_values()
         ir_config_paramater_obj = self.env["ir.config_parameter"].sudo()
+        ir_config_paramater_obj.set_param(
+            "nextcloud_odoo_sync.nextcloud_url", self.nextcloud_url.strip("/")
+        )
         if ir_config_paramater_obj.get_param(
             "nextcloud_odoo_sync.enable_calendar_sync"
         ):
-            ir_config_paramater_obj.set_param(
-                "nextcloud_odoo_sync.nextcloud_url", self.nextcloud_url.strip("/")
-            )
             nextcloud_url = self.nextcloud_url.strip("/")
             connection, principal = self.env[
                 "nextcloud.caldav"
