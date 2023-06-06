@@ -32,9 +32,6 @@ class ResConfigSettings(models.TransientModel):
     def set_values(self):
         res = super(ResConfigSettings, self).set_values()
         ir_config_paramater_obj = self.env["ir.config_parameter"].sudo()
-        ir_config_paramater_obj.set_param(
-            "nextcloud_odoo_sync.nextcloud_url", self.nextcloud_url.strip("/")
-        )
         if ir_config_paramater_obj.get_param(
             "nextcloud_odoo_sync.enable_calendar_sync"
         ):
@@ -52,7 +49,9 @@ class ResConfigSettings(models.TransientModel):
             else:
                 nextcloud_connection_status = "online"
                 nextcloud_error = False
-
+            ir_config_paramater_obj.set_param(
+                "nextcloud_odoo_sync.nextcloud_url", nextcloud_url
+            )
             ir_config_paramater_obj.set_param(
                 "nextcloud_odoo_sync.nextcloud_connection_status",
                 nextcloud_connection_status,
