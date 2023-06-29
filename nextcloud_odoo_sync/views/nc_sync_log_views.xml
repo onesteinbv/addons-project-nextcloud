@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
 	<data>
 		<record id="nc_sync_log_tree_view" model="ir.ui.view">
@@ -6,7 +7,7 @@
 			<field name="arch" type="xml">
 				<tree string="Nextcloud Sync Log Tree" create="0" edit="0" decoration-danger="state in ('failed', 'error')" default_order="date_start desc">
 					<field name="name"/>
-					<field name="state"/>
+					<field name="state" invisible="1"/>
 					<field name="description"/>
 					<field name="date_start"/>
 					<field name="date_end"/>
@@ -14,65 +15,51 @@
 				</tree>
 			</field>
 		</record>
-		
 		<record id="nc_sync_log_form_view" model="ir.ui.view">
 			<field name="name">nc.sync.log.form.view</field>
 			<field name="model">nc.sync.log</field>
 			<field name="arch" type="xml">
 				<form string="Nextcloud Sync Log Form" create="0" edit="0">
 					<div class="oe_title">
-                        <div>
-                            <label for="name"/>
-                        </div>
-                        <h3>
-                            <field name="name"/>
-                        </h3>
-                    </div>	
+						<div>
+							<label for="name"/>
+						</div>
+						<h2>
+							<field name="name"/>
+						</h2>
+					</div>
 					<group>
 						<group>
-							<field name="state"/>
+							<field name="state" invisible="1"/>
 							<field name="odoo_url"/>
 							<field name="date_start"/>
 							<field name="duration"/>
 						</group>
 						<group>
-							<field name="description"/>
 							<field name="next_cloud_url"/>
 							<field name="date_end"/>
+							<field name="description"/>
 						</group>
-						<field name="line_ids" readonly="1">
-							<tree decoration-danger="severity in ('error', 'critical')">
-								<field name="create_date" string="Date"/>
-								<field name="severity"/>
-								<field name="operation_type"/>
-								<field name="error_code_id"/>
-								<field name="response_description"/>
-								<field name="data_send"/>
-								<field name="prev_value" optional="hide"/>
-								<field name="new_value" optional="hide"/>
-							</tree>
-						</field>
 					</group>
+					<field name="line_ids" readonly="1">
+						<tree decoration-danger="severity in ('error', 'critical')">
+							<field name="create_date" string="Date"/>
+							<field name="severity"/>
+							<field name="operation_type"/>
+							<field name="error_code_id"/>
+							<field name="response_description"/>
+							<field name="data_send"/>
+						</tree>
+					</field>
 				</form>
 			</field>
 		</record>
-		
-		<record id="action_nc_log_user" model="ir.actions.act_window">
+		<record id="nc_sync_log_action" model="ir.actions.act_window">
 			<field name="name">Sync Activity</field>
 			<field name="res_model">nc.sync.log</field>
 			<field name="view_mode">tree,form</field>
 		</record>
-		
-		<menuitem
-			id="menu_main_nextcloud_nextcloud"
-			name="Sync"
-			parent="menu_main_nextcloud"
-			sequence="1"/>
-		
-		<menuitem
-			id="menu_main_nextcloud_sync_log"
-			name="Sync Activity"
-			parent="menu_main_nextcloud_nextcloud"
-			action="action_nc_log_user"/>
+		<menuitem id="menu_main_nextcloud_nextcloud" name="Sync" parent="menu_main_nextcloud" sequence="1"/>
+		<menuitem id="menu_main_nextcloud_sync_log" name="Sync Activity" parent="menu_main_nextcloud_nextcloud" action="nc_sync_log_action"/>
 	</data>
 </odoo>
