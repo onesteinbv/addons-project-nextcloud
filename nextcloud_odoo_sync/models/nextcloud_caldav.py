@@ -366,9 +366,11 @@ class Nextcloudcaldav(models.AbstractModel):
                                 att_user_id.partner_id.email = email
                             attendee_partner_ids.append(att_user_id.partner_id.id)
                         else:
-                            contact_id = res_partner_obj.create(
-                                {"name": email, "email": email, "nc_sync": True}
-                            )
+                            contact_id = res_partner_obj.search([('email','=',email)],limit=1)
+                            if not contact_id:
+                                contact_id = res_partner_obj.create(
+                                    {"name": email, "email": email, "nc_sync": True}
+                                )
                             all_partner_ids |= contact_id
                             attendee_partner_ids.append(contact_id.id)
         # Get attendees for Nextcloud event
@@ -713,7 +715,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                     for item in data:
                                         if isinstance(item, datetime):
                                             item = item.strftime("%Y%m%dT%H%M%S")
-                                        else:
+                                        elif isinstance(item, dtdate):
                                             item = item.strftime("%Y%m%d")
                                         exdates[nc_uid].append(item)
                                     data = False
@@ -1486,12 +1488,13 @@ class Nextcloudcaldav(models.AbstractModel):
         :return odoo value for categ_ids and updated value for categ_ids
         """
         result = []
-        for category in value.lower().split(","):
-            category_id = categ_ids.filtered(lambda x: x.name.lower() == category)
-            if not category_id:
-                category_id = categ_ids.create({"name": category})
-                categ_ids |= category_id
-            result.append(category_id.id)
+        if value:
+            for category in value.lower().split(","):
+                category_id = categ_ids.filtered(lambda x: x.name.lower() == category)
+                if not category_id:
+                    category_id = categ_ids.create({"name": category})
+                    categ_ids |= category_id
+                result.append(category_id.id)
         return [(6, 0, result)], categ_ids
 
     def get_caldav_fields(self):
