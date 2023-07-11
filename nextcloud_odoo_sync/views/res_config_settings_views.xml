@@ -59,6 +59,39 @@
                                 </div>
                             </div>
                         </div>
+                        <div attrs="{'invisible': [('enable_calendar_sync', '=', False)]}">
+                        <h2>Recurring Event Limits</h2>
+                        <div class="row mt16 o_settings_container" name="default_recurring_events_limit_settings_container">
+                            <div class="col-12 col-lg-6 o_setting_box" id="default_limits" title="These limits would be applied to new recurring events being created from nextcloud or to be synced with nextcloud.">
+                                <div class="o_setting_left_pane"/>
+                                <div class="o_setting_right_pane">
+                                    <span class="o_form_label">Default Recurring Event Limits</span>
+                                    <div class="text-muted">
+                                        Default Limits Applied To Recurring Events(With End Date As 'Forever') Being Created From/To be Synced to Nextcloud.
+                                        Define In Years The Limit For Each Of Frequency For Which The Events Should Be Created.
+                                    </div>
+                                    <div class="content-group">
+                                        <div class="row mt16">
+                                            <label string="Daily Limit(In Years)" for="daily_recurring_events_limit" class="col-lg-3"/>
+                                            <field name="daily_recurring_events_limit" attrs="{'required':[('enable_calendar_sync','=',True)]}"/>
+                                        </div>
+                                        <div class="row mt16">
+                                            <label string="Weekly Limit(In Years)" for="weekly_recurring_events_limit" class="col-lg-3"/>
+                                            <field name="weekly_recurring_events_limit" attrs="{'required':[('enable_calendar_sync','=',True)]}"/>
+                                        </div>
+                                        <div class="row mt16">
+                                            <label string="Monthly Limit(In Years)" for="monthly_recurring_events_limit" class="col-lg-3"/>
+                                            <field name="monthly_recurring_events_limit" attrs="{'required':[('enable_calendar_sync','=',True)]}"/>
+                                        </div>
+                                        <div class="row mt16">
+                                            <label string="Yearly Limit(In Years)" for="yearly_recurring_events_limit" class="col-lg-3"/>
+                                            <field name="yearly_recurring_events_limit" attrs="{'required':[('enable_calendar_sync','=',True)]}"/>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        </div>
                     </div>
            		</div>
            	</xpath>

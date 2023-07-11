@@ -27,6 +27,29 @@ class ResConfigSettings(models.TransientModel):
         default=7,
         config_parameter="nextcloud_odoo_sync.log_capacity",
     )
+    monthly_recurring_events_limit = fields.Integer(
+        string="Monthly Recurring Events Limit",
+        default=2,
+        config_parameter="nextcloud_odoo_sync.monthly_recurring_events_limit",
+    )
+    daily_recurring_events_limit = fields.Integer(
+        string="Daily Recurring Events Limit",
+        default=2,
+        config_parameter="nextcloud_odoo_sync.daily_recurring_events_limit",
+    )
+    weekly_recurring_events_limit = fields.Integer(
+        string="Weekly Recurring Events Limit",
+        default=2,
+        config_parameter="nextcloud_odoo_sync.weekly_recurring_events_limit",
+    )
+    yearly_recurring_events_limit = fields.Integer(
+        string="Yearly Recurring Events Limit",
+        default=10,
+        config_parameter="nextcloud_odoo_sync.yearly_recurring_events_limit",
+    )
+
+
+
 
     @api.model
     def set_values(self):

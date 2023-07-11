@@ -34,6 +34,7 @@ class CalendarRecurrence(models.Model):
             dtstart=dtstart,
             interval=self.interval,
         )
+        config = self.env["ir.config_parameter"].sudo()
         if freq == 'monthly' and self.month_by == 'date':  # e.g. every 15th of the month
             rrule_params['bymonthday'] = self.day
         elif freq == 'monthly' and self.month_by == 'day':  # e.g. every 2nd Monday in the month
@@ -45,21 +46,47 @@ class CalendarRecurrence(models.Model):
                 raise UserError(_("You have to choose at least one day in the week"))
             rrule_params['byweekday'] = weekdays
             rrule_params['wkst'] = self._get_lang_week_start()
-            rrule_params['count'] = ((104 // self.interval) if self.interval < 104 else 1) * len(
+            weekly_recurring_events_limit_value = (2
+                                                   if not config.get_param(
+                "nextcloud_odoo_sync.weekly_recurring_events_limit")
+                                                   else config.get_param(
+                "nextcloud_odoo_sync.weekly_recurring_events_limit")
+                                                   ) * 52
+            rrule_params['count'] = ((
+                                                 weekly_recurring_events_limit_value // self.interval) if self.interval < weekly_recurring_events_limit_value else 1) * len(
                 weekdays)  # maximum recurring events for 2 years
         elif freq == 'daily':
+            daily_recurring_events_limit_value = (2
+                                                  if not config.get_param(
+                "nextcloud_odoo_sync.daily_recurring_events_limit")
+                                                  else config.get_param(
+                "nextcloud_odoo_sync.daily_recurring_events_limit")
+                                                  ) * 365
             rrule_params['count'] = (
-                    720 // self.interval) if self.interval < 720 else 1  # maximum recurring events for 2 years
-        elif freq == 'yearly':
-            rrule_params['count'] = (
-                    10 // self.interval) if self.interval < 10 else 1  # maximum recurring events for 10 years
-        if freq == 'monthly':
-            if self.interval >= 12:
-                rrule_params['count'] = (10 // (
-                            self.interval // 12)) if self.interval <= 24 else 1  # maximum recurring events for 10 years
-            else:
+                    daily_recurring_events_limit_value // self.interval) if self.interval < daily_recurring_events_limit_value else 1  # maximum recurring events for 2 years
+        else:
+            yearly_recurring_events_limit_value = (10
+                                                   if not config.get_param(
+                "nextcloud_odoo_sync.yearly_recurring_events_limit")
+                                                   else config.get_param(
+                "nextcloud_odoo_sync.yearly_recurring_events_limit")
+                                                   )
+            monthly_recurring_events_limit_value = (2
+                                                    if not config.get_param(
+                "nextcloud_odoo_sync.monthly_recurring_events_limit")
+                                                    else config.get_param(
+                "nextcloud_odoo_sync.monthly_recurring_events_limit")
+                                                    ) * 12
+            if freq == 'yearly':
                 rrule_params['count'] = (
-                        24 // self.interval) if self.interval < 24 else 1  # maximum recurring events for 2 years
+                        yearly_recurring_events_limit_value // self.interval) if self.interval < yearly_recurring_events_limit_value else 1  # maximum recurring events for 10 years
+            elif freq == 'monthly':
+                if self.interval >= 12:
+                    rrule_params['count'] = (yearly_recurring_events_limit_value // (
+                            self.interval // 12))  # maximum recurring events for years defined
+                else:
+                    rrule_params['count'] = (
+                            monthly_recurring_events_limit_value // self.interval)  # maximum recurring events for months defined
 
         return rrule.rrule(
             freq_to_rrule(freq), **rrule_params

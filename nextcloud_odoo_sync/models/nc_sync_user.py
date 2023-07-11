@@ -5,7 +5,7 @@
 import hashlib
 import json
 
-from datetime import datetime
+from datetime import datetime,date
 from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError
 from odoo.addons.nextcloud_odoo_sync.models import jicson
@@ -42,6 +42,7 @@ class NcSyncUser(models.Model):
     )
     sync_calendar = fields.Boolean("Sync Calendar")
     nc_email = fields.Char("Email")
+    start_date = fields.Date("Sync Events From This Date",default=datetime.today().date())
 
     @api.depends("user_id", "user_name", "nc_password")
     def compute_user_has_calendar(self):
@@ -116,11 +117,11 @@ class NcSyncUser(models.Model):
                     ]
                 )
                 .filtered(
-                    lambda x: not x.nc_calendar_ids
+                    lambda x: (not x.nc_calendar_ids
                     or (
                         x.nc_calendar_ids
                         and self.nc_calendar_id not in x.nc_calendar_ids.ids
-                    )
+                    )) and x.start_date >= datetime.combine(self.start_date, datetime.min.time())
                 )
             )
             calendar_ids = calendar_event_ids.nc_calendar_ids.filtered(
@@ -332,8 +333,9 @@ class NcSyncUser(models.Model):
             "principal": False,
         }
         for user in self:
+            start_date = datetime.combine(self.start_date, datetime.min.time())
             if not events:
-                events = self.env["calendar.event"].sudo().search([])
+                events = self.env["calendar.event"].sudo().search([('start','>=',start_date)])
             try:
                 connection_dict = self.get_user_connection()
                 principal = connection_dict.get("principal", False)
@@ -404,7 +406,13 @@ class NcSyncUser(models.Model):
                         continue
                     if not self.nc_calendar_id.calendar_url == calendar.canonical_url:
                         continue
-                    for item in calendar.events():
+                    events_fetched = calendar.search(
+                        start=start_date,
+                        end=datetime(date.today().year + 100, 1, 1),
+                        event=True,
+                        expand=True,
+                    )
+                    for item in events_fetched:
                         event_vals = user.get_event_data(item)
                         result["nc_events"].append(
                             {
@@ -476,7 +484,14 @@ class NcSyncUser(models.Model):
                     continue
                 if not self.nc_calendar_id.calendar_url == calendar.canonical_url:
                     continue
-                for item in calendar.events():
+                start_date = datetime.combine(self.start_date, datetime.min.time())
+                events_fetched = calendar.search(
+                    start=start_date,
+                    end=datetime(date.today().year + 100, 1, 1),
+                    event=True,
+                    expand=True,
+                )
+                for item in events_fetched:
                     event_vals = user.get_event_data(item)
                     if event_vals["uid"] == nc_uid:
                         return event_vals["hash"]

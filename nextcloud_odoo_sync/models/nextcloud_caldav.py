@@ -592,9 +592,15 @@ class Nextcloudcaldav(models.AbstractModel):
             for calendar in calendars:
                 if not sync_user_id.nc_calendar_id.calendar_url == calendar.canonical_url:
                     continue
-                events = calendar.events()
+                start_date = datetime.combine(sync_user_id.start_date, datetime.min.time())
+                events = calendar.search(
+                    start=start_date,
+                    end=datetime(dtdate.today().year + 100, 1, 1),
+                    event=True,
+                    expand=True,
+                )
                 if events:
-                    all_user_events.extend(calendar.events())
+                    all_user_events.extend(events)
             for event in all_user_events:
                 nc_uid = event.vobject_instance.vevent.uid.value
                 if nc_uid in events_hash:
@@ -1282,11 +1288,11 @@ class Nextcloudcaldav(models.AbstractModel):
         sync_start = datetime.now()
         result = self.env["nc.sync.log"].log_event("pre_sync")
         log_obj = result["log_id"]
+        calendar_event_obj = self.env["calendar.event"]
         # To minimize impact on performance, search only once rather than
         # searching each loop
         params = {
             "log_obj": result["log_id"],
-            "all_odoo_event_ids": self.env["calendar.event"].search([]),
             "all_nc_calendar_ids": self.env["nc.calendar"].search(
                 [("user_id", "!=", False)]
             ),
@@ -1310,7 +1316,8 @@ class Nextcloudcaldav(models.AbstractModel):
             "delete_count": 0,
             "error_count": 0,
         }
-
+        if not per_user_id:
+            params["all_odoo_event_ids"] = calendar_event_obj.search([])
         if result["log_id"] and result["resume"]:
             sync_users_domain = [("sync_calendar", "=", True)]
             if per_user_id:
@@ -1318,7 +1325,10 @@ class Nextcloudcaldav(models.AbstractModel):
             sync_users = self.env["nc.sync.user"].search(sync_users_domain)
             for user in sync_users:
                 # Get all events from Odoo and Nextcloud
-                log_obj.log_event(message="Getting events for '%s'" % user.user_id.name)
+                # log_obj.log_event(message="Getting events for '%s'" % user.user_id.name)
+                if per_user_id:
+                    start_date = datetime.combine(user.start_date, datetime.min.time())
+                    params["all_odoo_event_ids"] = calendar_event_obj.search([('start','>=',start_date)])
                 events_dict = user.get_all_user_events(**params)
                 od_events = events_dict["od_events"]
                 nc_events = events_dict["nc_events"]
@@ -1326,28 +1336,28 @@ class Nextcloudcaldav(models.AbstractModel):
                 principal = events_dict["principal"]
                 if connection and principal:
                     params.update({"connection": connection, "principal": principal})
-                    # Compare all events
-                    log_obj.log_event(
-                        message="Comparing events for '%s'" % user["user_name"]
-                    )
+                    # # Compare all events
+                    # log_obj.log_event(
+                    #     message="Comparing events for '%s'" % user["user_name"]
+                    # )
                     od_events_dict, nc_events_dict = self.compare_events(
                         od_events, nc_events, user, log_obj
                     )
-                    # Log number of operations to do
-                    all_stg_events = {
-                        "Nextcloud": nc_events_dict,
-                        "Odoo": od_events_dict,
-                    }
-                    for stg_events in all_stg_events:
-                        message = "%s:" % stg_events
-                        for operation in all_stg_events[stg_events]:
-                            count = len(all_stg_events[stg_events][operation])
-                            message += " {} events to {},".format(count, operation)
-                        log_obj.log_event(message=message.strip(","))
+                    # # Log number of operations to do
+                    # all_stg_events = {
+                    #     "Nextcloud": nc_events_dict,
+                    #     "Odoo": od_events_dict,
+                    # }
+                    # for stg_events in all_stg_events:
+                    #     message = "%s:" % stg_events
+                    #     for operation in all_stg_events[stg_events]:
+                    #         count = len(all_stg_events[stg_events][operation])
+                    #         message += " {} events to {},".format(count, operation)
+                    #     log_obj.log_event(message=message.strip(","))
                     # Update events in Odoo and Nextcloud
-                    log_obj.log_event(message="Updating Odoo events")
+                    # log_obj.log_event(message="Updating Odoo events")
                     params = self.update_odoo_events(user, od_events_dict, **params)
-                    log_obj.log_event(message="Updating Nextcloud events")
+                    # log_obj.log_event(message="Updating Nextcloud events")
                     params = self.update_nextcloud_events(
                         user, nc_events_dict, **params
                     )

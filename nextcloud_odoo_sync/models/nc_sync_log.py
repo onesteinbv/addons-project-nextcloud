@@ -175,44 +175,43 @@ class NcSyncLog(models.Model):
                 }
             )
             result["log_id"] = log_id
-            # Nextcloud connection test for Caldav
-            if caldav_sync:
-                data_send = "url: {}, username: {}, password: ****".format(
-                    nc_url, username
-                )
-                res = {
-                    "operation_type": "login",
-                    "log_id": log_id.id,
-                    "data_send": data_send,
-                }
-                connection, principal = caldav_obj.check_nextcloud_connection(
-                    url=nc_url, username=username, password=password
-                )
-                if not isinstance(principal, dict):
-                    res[
-                        "response_description"
-                    ] = "Nextcloud connection test for Caldav: OK"
-                else:
-                    response_description = (
-                        """Nextcloud connection test for Caldav: Error
-                        \t%s"""
-                        % principal["response_description"]
-                    )
-                    res.update(
-                        {
-                            "response_description": response_description,
-                            "error_code_id": principal["sync_error_id"].id
-                            if "sync_error_id" in principal
-                            else False,
-                        }
-                    )
-                    result["resume"] = False
-                log_line.create(res)
-
-            # Compare Nextcloud users with Odoo users and vice versa
-            if result["resume"] and log_id:
-                result["stg_users_nc_in_odoo"] = self.check_and_log_users(log_id)
-
+            # # Nextcloud connection test for Caldav
+            # if caldav_sync:
+            #     data_send = "url: {}, username: {}, password: ****".format(
+            #         nc_url, username
+            #     )
+            #     res = {
+            #         "operation_type": "login",
+            #         "log_id": log_id.id,
+            #         "data_send": data_send,
+            #     }
+            #     connection, principal = caldav_obj.check_nextcloud_connection(
+            #         url=nc_url, username=username, password=password
+            #     )
+            #     if not isinstance(principal, dict):
+            #         res[
+            #             "response_description"
+            #         ] = "Nextcloud connection test for Caldav: OK"
+            #     else:
+            #         response_description = (
+            #             """Nextcloud connection test for Caldav: Error
+            #             \t%s"""
+            #             % principal["response_description"]
+            #         )
+            #         res.update(
+            #             {
+            #                 "response_description": response_description,
+            #                 "error_code_id": principal["sync_error_id"].id
+            #                 if "sync_error_id" in principal
+            #                 else False,
+            #             }
+            #         )
+            #         result["resume"] = False
+            #     log_line.create(res)
+            #
+            # # Compare Nextcloud users with Odoo users and vice versa
+            # if result["resume"] and log_id:
+            #     result["stg_users_nc_in_odoo"] = self.check_and_log_users(log_id)
         else:
             error = str(params["error"]) if "error" in params else False
             severity = params["severity"] if "severity" in params else "info"
