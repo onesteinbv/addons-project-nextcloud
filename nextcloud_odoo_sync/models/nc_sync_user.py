@@ -121,7 +121,7 @@ class NcSyncUser(models.Model):
                     or (
                         x.nc_calendar_ids
                         and self.nc_calendar_id not in x.nc_calendar_ids.ids
-                    )) and x.start_date >= datetime.combine(self.start_date, datetime.min.time())
+                    )) and x.start_date >= datetime.combine(self.start_date or date.today(), datetime.min.time())
                 )
             )
             calendar_ids = calendar_event_ids.nc_calendar_ids.filtered(
@@ -333,7 +333,7 @@ class NcSyncUser(models.Model):
             "principal": False,
         }
         for user in self:
-            start_date = datetime.combine(self.start_date, datetime.min.time())
+            start_date = datetime.combine(self.start_date or date.today(), datetime.min.time())
             if not events:
                 events = self.env["calendar.event"].sudo().search([('start','>=',start_date)])
             try:
@@ -484,7 +484,7 @@ class NcSyncUser(models.Model):
                     continue
                 if not self.nc_calendar_id.calendar_url == calendar.canonical_url:
                     continue
-                start_date = datetime.combine(self.start_date, datetime.min.time())
+                start_date = datetime.combine(self.start_date or date.today(), datetime.min.time())
                 events_fetched = calendar.search(
                     start=start_date,
                     end=datetime(date.today().year + 100, 1, 1),

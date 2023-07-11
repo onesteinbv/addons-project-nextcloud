@@ -592,7 +592,7 @@ class Nextcloudcaldav(models.AbstractModel):
             for calendar in calendars:
                 if not sync_user_id.nc_calendar_id.calendar_url == calendar.canonical_url:
                     continue
-                start_date = datetime.combine(sync_user_id.start_date, datetime.min.time())
+                start_date = datetime.combine(sync_user_id.start_date or dtdate.today(), datetime.min.time())
                 events = calendar.search(
                     start=start_date,
                     end=datetime(dtdate.today().year + 100, 1, 1),
@@ -1327,7 +1327,7 @@ class Nextcloudcaldav(models.AbstractModel):
                 # Get all events from Odoo and Nextcloud
                 # log_obj.log_event(message="Getting events for '%s'" % user.user_id.name)
                 if per_user_id:
-                    start_date = datetime.combine(user.start_date, datetime.min.time())
+                    start_date = datetime.combine(user.start_date or dtdate.today(), datetime.min.time())
                     params["all_odoo_event_ids"] = calendar_event_obj.search([('start','>=',start_date)])
                 events_dict = user.get_all_user_events(**params)
                 od_events = events_dict["od_events"]
