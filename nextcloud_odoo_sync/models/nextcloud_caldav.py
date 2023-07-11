@@ -462,7 +462,6 @@ class Nextcloudcaldav(models.AbstractModel):
                     return date.replace(tzinfo=None)
             return nc_value
         except Exception as e:
-            _logger.warning(e)
             return nc_value
 
     def get_recurrence_id_date(self, nc_field, nc_value, od_event_id):
@@ -587,10 +586,12 @@ class Nextcloudcaldav(models.AbstractModel):
         elif not event_ids and "principal" in hash_vals:
             events_hash = hash_vals["events"]
             principal = hash_vals["principal"]
-            sync_user_id = hash_vals["sync_user_id"]
+            sync_user_id = self.env['nc.sync.user'].browse(hash_vals["nc_sync_user_id"])
             calendars = principal.calendars()
             all_user_events = []
             for calendar in calendars:
+                if not sync_user_id.nc_calendar_id.calendar_url == calendar.canonical_url:
+                    continue
                 events = calendar.events()
                 if events:
                     all_user_events.extend(calendar.events())
@@ -863,6 +864,11 @@ class Nextcloudcaldav(models.AbstractModel):
                                 # We don"t update if the event only contains
                                 # rrule but no nc_rid
                                 if "rrule" in vals and "nc_rid" not in vals:
+                                    vals.pop("start_date",None)
+                                    vals.pop("stop_date",None)
+                                    vals.pop("start",None)
+                                    vals.pop("stop",None)
+                                    od_event_id.write(vals)
                                     self.update_event_hash(hash_vals, od_event_id)
                                     params["write_count"] += 1
                                     continue

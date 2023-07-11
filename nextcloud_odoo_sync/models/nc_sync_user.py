@@ -98,7 +98,6 @@ class NcSyncUser(models.Model):
                 "your default odoo calendar when creating "
                 "new events"
             )
-
     def write(self, vals):
         """
         Inherited odoo base function
@@ -120,7 +119,7 @@ class NcSyncUser(models.Model):
                     lambda x: not x.nc_calendar_ids
                     or (
                         x.nc_calendar_ids
-                        and self.user_id.partner_id.id not in x.nc_calendar_ids.ids
+                        and self.nc_calendar_id not in x.nc_calendar_ids.ids
                     )
                 )
             )
@@ -402,6 +401,9 @@ class NcSyncUser(models.Model):
                                 "calendar_url": calendar.canonical_url,
                             }
                         )
+                        continue
+                    if not self.nc_calendar_id.calendar_url == calendar.canonical_url:
+                        continue
                     for item in calendar.events():
                         event_vals = user.get_event_data(item)
                         result["nc_events"].append(
@@ -471,6 +473,9 @@ class NcSyncUser(models.Model):
                             "calendar_url": calendar.canonical_url,
                         }
                     )
+                    continue
+                if not self.nc_calendar_id.calendar_url == calendar.canonical_url:
+                    continue
                 for item in calendar.events():
                     event_vals = user.get_event_data(item)
                     if event_vals["uid"] == nc_uid:

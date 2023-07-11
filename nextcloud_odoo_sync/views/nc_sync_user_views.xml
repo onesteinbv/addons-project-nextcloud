@@ -71,18 +71,11 @@
 
 	<menuitem name="Nextcloud Sync" id="menu_main_nextcloud"
 		groups="nextcloud_odoo_sync.group_nextcloud_sync_admin"
-		sequence="1" web_icon="nextcloud_odoo_sync,static/description/icon.png"/>
+		sequence="100" web_icon="nextcloud_odoo_sync,static/description/icon.png"/>
 
 	<menuitem
 		id="menu_main_nextcloud_config"
 		name="Configuration"
 		parent="menu_main_nextcloud"
 		sequence="50"/>
-
-	<menuitem
-		id="menu_main_nextcloud_sync_user"
-		name="User Setup"
-		parent="menu_main_nextcloud_config"
-		sequence="1"
-		action="nc_sync_user_action"/>
 </odoo>
