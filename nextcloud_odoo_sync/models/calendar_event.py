@@ -223,22 +223,25 @@ class CalendarEvent(models.Model):
         from Nextcloud Calendar at the next sync. We just mark the event as to
         delete (nc_to_delete=True) before we sync.
         """
+        has_nc_uids = self.env['calendar.event']
+        if not self._context.get("force_delete", False):
+            has_nc_uids = self.filtered(lambda r: r.nc_uid)
+            if has_nc_uids:
+                has_nc_uids.write({"nc_to_delete": True})
+        self = self - has_nc_uids
         for record in self:
-            if record.nc_uid and not self._context.get("force_delete", False):
-                record.write({"nc_to_delete": True})
-            else:
-                if record.recurrence_id:
-                    nc_exdates = (
-                        ast.literal_eval(str(record.recurrence_id.nc_exdate))
-                        if record.recurrence_id.nc_exdate
-                        else []
-                    )
-                    start_date = record.start.strftime("%Y%m%dT%H%M%S")
-                    if record.allday:
-                        start_date = record.start_date.strftime("%Y%m%d")
-                    nc_exdates.append(start_date)
-                    record.recurrence_id.write({"nc_exdate": nc_exdates})
-                return super(CalendarEvent, self).unlink()
+            if record.recurrence_id:
+                nc_exdates = (
+                    ast.literal_eval(str(record.recurrence_id.nc_exdate))
+                    if record.recurrence_id.nc_exdate
+                    else []
+                )
+                start_date = record.start.strftime("%Y%m%dT%H%M%S")
+                if record.allday:
+                    start_date = record.start_date.strftime("%Y%m%d")
+                nc_exdates.append(start_date)
+                record.recurrence_id.write({"nc_exdate": nc_exdates})
+        return super(CalendarEvent, self).unlink()
 
 
 class CalendarEventNchash(models.Model):
