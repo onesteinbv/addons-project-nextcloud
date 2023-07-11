@@ -595,9 +595,7 @@ class Nextcloudcaldav(models.AbstractModel):
                 start_date = datetime.combine(sync_user_id.start_date or dtdate.today(), datetime.min.time())
                 events = calendar.search(
                     start=start_date,
-                    end=datetime(dtdate.today().year + 100, 1, 1),
                     event=True,
-                    expand=True,
                 )
                 if events:
                     all_user_events.extend(events)

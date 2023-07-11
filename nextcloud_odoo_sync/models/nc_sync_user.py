@@ -408,9 +408,7 @@ class NcSyncUser(models.Model):
                         continue
                     events_fetched = calendar.search(
                         start=start_date,
-                        end=datetime(date.today().year + 100, 1, 1),
                         event=True,
-                        expand=True,
                     )
                     for item in events_fetched:
                         event_vals = user.get_event_data(item)
@@ -487,9 +485,7 @@ class NcSyncUser(models.Model):
                 start_date = datetime.combine(self.start_date or date.today(), datetime.min.time())
                 events_fetched = calendar.search(
                     start=start_date,
-                    end=datetime(date.today().year + 100, 1, 1),
                     event=True,
-                    expand=True,
                 )
                 for item in events_fetched:
                     event_vals = user.get_event_data(item)

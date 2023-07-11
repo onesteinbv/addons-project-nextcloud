@@ -64,7 +64,7 @@ class CalendarRecurrence(models.Model):
                                                   ) * 365
             rrule_params['count'] = (
                     daily_recurring_events_limit_value // self.interval) if self.interval < daily_recurring_events_limit_value else 1  # maximum recurring events for 2 years
-        else:
+        if freq in ('yearly','monthly'):
             yearly_recurring_events_limit_value = (10
                                                    if not config.get_param(
                 "nextcloud_odoo_sync.yearly_recurring_events_limit")
