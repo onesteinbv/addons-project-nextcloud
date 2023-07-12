@@ -425,7 +425,19 @@ class Nextcloudcaldav(models.AbstractModel):
                 if recurrence and key in ["DTSTART", "DTEND"]:
                     # Cannot get the calendar event for single recurring instance
                     # hence we revent to string manipulation of date
-                    return self.get_recurrence_id_date(nc_field, nc_value, od_event)
+                    event_date = nc_event.icalendar_component.get(key).dt
+                    tz = 'UTC'
+                    if isinstance(event_date, datetime):
+                        tz = event_date.tzinfo.zone
+                    date = parse(nc_value)
+                    if tz != "UTC":
+                        date = date.astimezone(pytz.utc)
+                    value = nc_field[-1].split("=")[-1]
+                    if value == 'date':
+                        if nc_field[0].upper() == "DTEND":
+                            date = date - timedelta(days=1)
+                        return date.date()
+                    return date.replace(tzinfo=None)
                 elif key in nc_field[0].upper():
                     if "EXDATE" in key:
                         exdate_val = nc_event.icalendar_component.get(key)
@@ -458,8 +470,13 @@ class Nextcloudcaldav(models.AbstractModel):
                     else:
                         if key == "DTEND":
                             date = date - timedelta(days=1)
+                    value = nc_field[-1].split("=")[-1]
+                    if value == 'date' and isinstance(date, datetime):
+                        date = date.date()
+                    if isinstance(date, datetime):
+                        return date.replace(tzinfo=None)
+                    else:
                         return date
-                    return date.replace(tzinfo=None)
             return nc_value
         except Exception as e:
             return nc_value
@@ -476,7 +493,7 @@ class Nextcloudcaldav(models.AbstractModel):
         if "Z" in nc_value:
             nc_value = nc_value.replace("Z", "")
         date_value = parse(nc_value)
-        if od_event_id and od_event_id.allday and not isinstance(date_value, datetime):
+        if od_event_id and od_event_id.allday and isinstance(date_value, datetime):
             data = date_value.date()
         else:
             data = self.convert_date(date_value, tz, "utc")
@@ -725,14 +742,17 @@ class Nextcloudcaldav(models.AbstractModel):
                                         exdates[nc_uid].append(item)
                                     data = False
                                 elif field[0] == "recurrence-id" and data:
-                                    data = self.get_recurrence_id_date(
-                                        field, vevent[e], od_event_id
-                                    )
+                                    try:
+                                        data = self.get_recurrence_id_date(
+                                            field, vevent[e], od_event_id
+                                        )
+                                    except:
+                                        pass
                                     # Convert it back to string for matching
                                     # with nc_rid field of calendar.event model
                                     if isinstance(data, datetime):
                                         data = data.strftime("%Y%m%dT%H%M%S")
-                                    else:
+                                    elif isinstance(data, dtdate):
                                         data = data.strftime("%Y%m%d")
                                 if data:
                                     vals[field_mapping[field[0]]] = data
@@ -868,11 +888,10 @@ class Nextcloudcaldav(models.AbstractModel):
                                 # We don"t update if the event only contains
                                 # rrule but no nc_rid
                                 if "rrule" in vals and "nc_rid" not in vals:
-                                    vals.pop("start_date",None)
-                                    vals.pop("stop_date",None)
-                                    vals.pop("start",None)
-                                    vals.pop("stop",None)
-                                    od_event_id.write(vals)
+                                    # vals.pop("start_date",None)
+                                    # vals.pop("stop_date",None)
+                                    # vals.pop("start",None)
+                                    # vals.pop("stop",None)
                                     self.update_event_hash(hash_vals, od_event_id)
                                     params["write_count"] += 1
                                     continue
@@ -894,12 +913,12 @@ class Nextcloudcaldav(models.AbstractModel):
                                     else:
                                         od_event_id = recurring_event_id
                                 od_event_id.write(vals)
-                                # Update the hash value of the Odoo event that
-                                # corresponds to the current user_id
-                                if od_event_id.recurrence_id:
-                                    od_event_id = (
-                                        od_event_id.recurrence_id.calendar_event_ids
-                                    )
+                                # # Update the hash value of the Odoo event that
+                                # # corresponds to the current user_id
+                                # if od_event_id.recurrence_id:
+                                #     od_event_id = (
+                                #         od_event_id.recurrence_id.calendar_event_ids
+                                #     )
                                 # Update hash values and attendee invite
                                 self.update_attendee_invite(od_event_id)
                                 self.update_event_hash(hash_vals, od_event_id)
@@ -1151,11 +1170,13 @@ class Nextcloudcaldav(models.AbstractModel):
                         if "attendee" in vevent.contents:
                             vevent.contents.pop("attendee")
                         if attendees:
-                            caldav_event.parent.save_with_invites(
-                                caldav_event.icalendar_instance,
-                                attendees=attendees,
-                                schedule_agent="NONE",
-                            )
+                            for attendee in attendees:
+                                caldav_event.add_attendee(attendee)
+                            # caldav_event.parent.save_with_invites(
+                            #     caldav_event.icalendar_instance,
+                            #     attendees=attendees,
+                            #     schedule_agent="NONE",
+                            # )
                         params["write_count"] += 1
                     except Exception as e:
                         message = (

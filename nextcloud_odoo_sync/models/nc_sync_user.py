@@ -42,7 +42,7 @@ class NcSyncUser(models.Model):
     )
     sync_calendar = fields.Boolean("Sync Calendar")
     nc_email = fields.Char("Email")
-    start_date = fields.Date("Sync Events From This Date",default=datetime.today().date())
+    start_date = fields.Date("Sync Events From This Date",default=date.today())
 
     @api.depends("user_id", "user_name", "nc_password")
     def compute_user_has_calendar(self):
