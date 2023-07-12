@@ -81,17 +81,18 @@ class NcSyncUser(models.Model):
                     )
                 )
 
-    @api.onchange("nc_calendar_id")
+    @api.onchange("nc_calendar_id","nc_email")
     def onchange_nc_calendar_id(self):
         """
         Update user message upon changing nextclound calenda
         """
         if self.nc_calendar_id:
-            self.sync_calendar = True
             self.user_message = (
                 "%s will be used as your default Odoo "
                 "calendar when creating new events"
             ) % self.nc_calendar_id.name
+            if self.nc_email:
+                self.sync_calendar = True
         else:
             self.sync_calendar = False
             self.user_message = (
@@ -99,6 +100,7 @@ class NcSyncUser(models.Model):
                 "your default odoo calendar when creating "
                 "new events"
             )
+
     def write(self, vals):
         """
         Inherited odoo base function
@@ -121,7 +123,7 @@ class NcSyncUser(models.Model):
                     or (
                         x.nc_calendar_ids
                         and self.nc_calendar_id not in x.nc_calendar_ids.ids
-                    )) and x.start_date >= datetime.combine(self.start_date or date.today(), datetime.min.time())
+                    )) and x.start >= datetime.combine(self.start_date or date.today(), datetime.min.time())
                 )
             )
             calendar_ids = calendar_event_ids.nc_calendar_ids.filtered(
@@ -207,6 +209,10 @@ class NcSyncUser(models.Model):
             raise ValidationError(f"{sync_error}: {response}")
         user_data = self.env["nextcloud.base"].get_user(principal.client.username)
         self.nc_email = user_data.get("email", False) if user_data else False
+        if self.nc_calendar_id and self.nc_email:
+            self.sync_calendar = True
+        else:
+            self.sync_calendar = False
         return {"connection": connection, "principal": principal}
 
     def get_user_calendars(self, principal):
