@@ -939,9 +939,22 @@ class Nextcloudcaldav(models.AbstractModel):
                                 params["error_count"] += 1
 
                 # Perform delete operation
-                if operation == "delete" and "od_event" in event and event["od_event"]:
-                    event["od_event"].sudo().with_context(force_delete=True).unlink()
-                    params["delete_count"] += len(event["od_event"])
+                try:
+                    if operation == "delete" and "od_event" in event and event["od_event"]:
+                        event["od_event"].sudo().with_context(force_delete=True).unlink()
+                        params["delete_count"] += len(event["od_event"])
+                except Exception as e:
+                    message = (
+                            "Error deleting Odoo event '%s' for user '%s':\n"
+                            % (event["od_event"], user_name)
+                    )
+                    log_obj.log_event(
+                        mode="error",
+                        error=e,
+                        message=message,
+                        operation_type="delete",
+                    )
+                    params["error_count"] += 1
         return params
 
     def update_nextcloud_events(self, sync_user_id, nc_events_dict, **params):

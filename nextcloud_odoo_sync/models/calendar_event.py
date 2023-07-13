@@ -176,7 +176,7 @@ class CalendarEvent(models.Model):
                 "nextcloud_odoo_sync.nc_event_status_confirmed"
             ).id
         res = super(CalendarEvent, self).create(vals)
-        if "nc_calendar_ids" not in vals or vals["nc_calendar_ids"] == [[6, False, []]]:
+        if "nc_calendar_ids" not in vals or vals["nc_calendar_ids"] == [[6, False, []]] and vals.get('user_id'):
             # Check if a value for calendar exist for the user:
             nc_sync_user_id = self.env["nc.sync.user"].search(
                 [("user_id", "=", vals["user_id"])], limit=1
