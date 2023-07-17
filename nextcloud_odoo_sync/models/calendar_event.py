@@ -3,14 +3,15 @@
 
 import ast
 
-from odoo import api, models, fields
+from odoo import api, models, fields, _
+from odoo.exceptions import UserError
 
 
 class CalendarEvent(models.Model):
     _inherit = "calendar.event"
 
     def _get_nc_calendar_selection(self):
-        nc_calendar_ids = self.env.user.nc_calendar_ids
+        nc_calendar_ids = self.nc_calendar_ids or self.env.user.nc_calendar_ids
         values = []
         if nc_calendar_ids:
             [values.append((str(x.id), x.name)) for x in nc_calendar_ids]
@@ -40,6 +41,7 @@ class CalendarEvent(models.Model):
     nc_to_delete = fields.Boolean("To Delete")
     nc_allday = fields.Boolean("Nextcloud All day")
     nc_detach = fields.Boolean("Detach from recurring event")
+    nc_event_updateable = fields.Boolean("Event Updateable In Nextcloud",compute="_compute_nc_event_updateable")
 
     @api.model
     def default_get(self, fields):
@@ -86,6 +88,20 @@ class CalendarEvent(models.Model):
                     calendar = calendar_id.ids[0]
             event.nc_calendar_id = calendar
             event.nc_calendar_select = str(calendar) if calendar else False
+
+    @api.depends('nc_calendar_id')
+    def _compute_nc_event_updateable(self):
+        for event in self:
+            nc_event_updateable = True
+            if event.nc_calendar_id:
+                default_calendar_id = (
+                    self.env["nc.sync.user"]
+                    .search([("user_id", "=", self.env.user.id)], limit=1)
+                    .mapped("nc_calendar_id")
+                )
+                if event.nc_calendar_id != default_calendar_id:
+                    nc_event_updateable = False
+            event.nc_event_updateable = nc_event_updateable
 
     @api.depends("duration", "partner_ids", "user_id")
     def _compute_nc_require_calendar(self):
@@ -176,13 +192,18 @@ class CalendarEvent(models.Model):
                 "nextcloud_odoo_sync.nc_event_status_confirmed"
             ).id
         res = super(CalendarEvent, self).create(vals)
-        if "nc_calendar_ids" not in vals or vals["nc_calendar_ids"] == [[6, False, []]] and vals.get('user_id'):
+        if vals.get('user_id'):
             # Check if a value for calendar exist for the user:
             nc_sync_user_id = self.env["nc.sync.user"].search(
                 [("user_id", "=", vals["user_id"])], limit=1
             )
-            if nc_sync_user_id and nc_sync_user_id.nc_calendar_id:
-                res.nc_calendar_ids = [(4, nc_sync_user_id.nc_calendar_id.id)]
+            if "nc_calendar_ids" not in vals or vals["nc_calendar_ids"] == [[6, False, []]]:
+                if nc_sync_user_id and nc_sync_user_id.nc_calendar_id:
+                    res.nc_calendar_ids = [(4, nc_sync_user_id.nc_calendar_id.id)]
+            if not self._context.get("sync_from_nextcloud",
+                                     False) and res.nc_calendar_id and res.nc_calendar_id != nc_sync_user_id.nc_calendar_id:
+                raise UserError(_('You cannot create nextcloud events for calendars other than default one(%s)',
+                                  nc_sync_user_id.nc_calendar_id.name))
         return res
 
     def write(self, vals):
@@ -193,25 +214,37 @@ class CalendarEvent(models.Model):
         """
         if not self._context.get("sync", False) and "nc_synced" not in vals:
             vals["nc_synced"] = False
+        ex_fields = [
+            "nc_uid",
+            "nc_rid",
+            "nc_hash_ids",
+            "nc_synced",
+            "nc_to_delete",
+            "recurrence_id",
+            "nc_calendar_select",
+        ]
+        fields_to_update = list(vals.keys())
+        detach = False
+        for f in fields_to_update:
+            if f not in ex_fields:
+                detach = True
+                break
         for record in self:
             # Detach the record from recurring event whenever an edit was made
             # to make it compatible when synced to Nextcloud calendar
+            if not self._context.get("sync_from_nextcloud",
+                                     False) and detach and record.nc_uid and record.user_id and record.user_id != self.env.user:
+                raise UserError(_('You cannot update nextcloud events if you are not the organizer'))
+            if not self._context.get("sync_from_nextcloud",
+                                     False) and not record.nc_event_updateable and detach:
+                default_calendar_id = (
+                    self.env["nc.sync.user"]
+                    .search([("user_id", "=", self.env.user.id)], limit=1)
+                    .mapped("nc_calendar_id")
+                )
+                raise UserError(_('You cannot update nextcloud events for calendars other than default one(%s)',
+                                  default_calendar_id.name))
             if record.recurrence_id:
-                detach = False
-                fields_to_update = list(vals.keys())
-                ex_fields = [
-                    "nc_uid",
-                    "nc_rid",
-                    "nc_hash_ids",
-                    "nc_synced",
-                    "nc_to_delete",
-                    "recurrence_id",
-                    "nc_calendar_select",
-                ]
-                for f in fields_to_update:
-                    if f not in ex_fields:
-                        detach = True
-                        break
                 if detach:
                     vals.update({"nc_detach": True})
         return super(CalendarEvent, self).write(vals)
@@ -225,7 +258,15 @@ class CalendarEvent(models.Model):
         """
         has_nc_uids = self.env['calendar.event']
         if not self._context.get("force_delete", False):
-            has_nc_uids = self.filtered(lambda r: r.nc_uid)
+            for record in self:
+                if record.nc_uid and record.user_id and record.user_id != self.env.user:
+                    raise UserError(_('You cannot delete nextcloud events if you are not the organizer'))
+            default_calendar_id = (
+                self.env["nc.sync.user"]
+                .search([("user_id", "=", self.env.user.id)], limit=1)
+                .mapped("nc_calendar_id")
+            )
+            has_nc_uids = self.filtered(lambda r: r.nc_uid and r.nc_calendar_id == default_calendar_id)
             if has_nc_uids:
                 has_nc_uids.write({"nc_to_delete": True})
         self = self - has_nc_uids
