@@ -344,7 +344,7 @@ class NcSyncUser(models.Model):
         for user in self:
             start_date = datetime.combine(self.start_date or date.today(), datetime.min.time())
             if not events:
-                events = self.env["calendar.event"].sudo().search([('start', '>=', start_date)])
+                events = self.env["calendar.event"].sudo().search([('start', '>=', start_date)],order="start")
             try:
                 connection_dict = self.get_user_connection()
                 principal = connection_dict.get("principal", False)

@@ -1439,7 +1439,7 @@ class Nextcloudcaldav(models.AbstractModel):
                 # log_obj.log_event(message="Getting events for '%s'" % user.user_id.name)
                 if per_user_id:
                     start_date = datetime.combine(user.start_date or dtdate.today(), datetime.min.time())
-                    params["all_odoo_event_ids"] = calendar_event_obj.search([('start', '>=', start_date)])
+                    params["all_odoo_event_ids"] = calendar_event_obj.search([('start', '>=', start_date)],order="start")
                 events_dict = user.get_all_user_events(**params)
                 od_events = events_dict["od_events"]
                 nc_events = events_dict["nc_events"]
