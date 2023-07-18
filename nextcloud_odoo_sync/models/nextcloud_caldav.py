@@ -355,7 +355,7 @@ class Nextcloudcaldav(models.AbstractModel):
                 if email != "false":
                     # Check if an Odoo user has the same email address
                     att_user_id = nc_sync_user_obj.search(
-                        [("nc_email", "=", email)], limit=1
+                        [("nc_email", "=", email),("sync_calendar", "=", True)], limit=1
                     ).user_id
                     if not att_user_id:
                         att_user_id = all_user_ids.filtered(
@@ -396,7 +396,7 @@ class Nextcloudcaldav(models.AbstractModel):
                     "mailto:", ""
                 )
                 org_user_id = nc_sync_user_obj.search(
-                    [("nc_email", "=", organizer_email)], limit=1
+                    [("nc_email", "=", organizer_email),("sync_calendar", "=", True)], limit=1
                 ).user_id
                 if not org_user_id:
                     org_user_id = all_user_ids.filtered(
@@ -421,7 +421,7 @@ class Nextcloudcaldav(models.AbstractModel):
                         and len(calendar_event.partner_ids) > 1
                 ):
                     nc_user_id = all_sync_user_ids.filtered(
-                        lambda x: x.partner_id.id == partner.id
+                        lambda x: x.partner_id.id == partner.id and x.sync_calendar
                     )
                     try:
                         nc_user_ids |= nc_user_id
@@ -870,7 +870,7 @@ class Nextcloudcaldav(models.AbstractModel):
                         }]
                         if organizer_user_id:
                             nc_sync_user_id = self.env["nc.sync.user"].search(
-                                [("user_id", "=", organizer_user_id)], limit=1
+                                [("user_id", "=", organizer_user_id),("sync_calendar", "=", True)], limit=1
                             )
                             if nc_sync_user_id != sync_user_id:
                                 nc_user_event_hash,nc_sync_user_calendar_id = (
@@ -1408,7 +1408,7 @@ class Nextcloudcaldav(models.AbstractModel):
                 [("user_id", "!=", False)]
             ),
             "all_user_ids": self.env["res.users"].search([]),
-            "all_sync_user_ids": self.env["nc.sync.user"].search([]),
+            "all_sync_user_ids": self.env["nc.sync.user"].search([("sync_calendar", "=", True)]),
             "all_partner_ids": self.env["res.partner"].search([("email", "!=", False)]),
             "all_odoo_event_type_ids": self.env["calendar.event.type"].search([]),
             "status_vals": {

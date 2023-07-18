@@ -96,7 +96,7 @@ class CalendarEvent(models.Model):
             if event.nc_calendar_id:
                 default_calendar_id = (
                     self.env["nc.sync.user"]
-                    .search([("user_id", "=", self.env.user.id)], limit=1)
+                    .search([("user_id", "=", self.env.user.id),("sync_calendar", "=", True)], limit=1)
                     .mapped("nc_calendar_id")
                 )
                 if event.nc_calendar_id != default_calendar_id:
@@ -126,7 +126,7 @@ class CalendarEvent(models.Model):
             if self.nc_require_calendar:
                 default_calendar_id = (
                     self.env["nc.sync.user"]
-                    .search([("user_id", "=", self.user_id.id)], limit=1)
+                    .search([("user_id", "=", self.user_id.id),("sync_calendar", "=", True)], limit=1)
                     .mapped("nc_calendar_id")
                 )
                 if default_calendar_id and self.user_id == self.env.user:
@@ -153,11 +153,11 @@ class CalendarEvent(models.Model):
             elif not self.nc_calendar_select and self.user_id:
                 calendar_id = (
                     self.env["nc.sync.user"]
-                    .search([("user_id", "=", self.user_id.id)], limit=1)
+                    .search([("user_id", "=", self.user_id.id),("sync_calendar", "=", True)], limit=1)
                     .mapped("nc_calendar_id")
                 )
             else:
-                calendar_id = self.env["nc.sync.user"]
+                calendar_id = self.env["nc.calendar"]
             new_calendar_ids = []
             if self.nc_calendar_ids:
                 new_calendar_ids = self.nc_calendar_ids.ids
@@ -195,7 +195,7 @@ class CalendarEvent(models.Model):
         if vals.get('user_id'):
             # Check if a value for calendar exist for the user:
             nc_sync_user_id = self.env["nc.sync.user"].search(
-                [("user_id", "=", vals["user_id"])], limit=1
+                [("user_id", "=", vals["user_id"]),("sync_calendar", "=", True)], limit=1
             )
             if "nc_calendar_ids" not in vals or vals["nc_calendar_ids"] == [[6, False, []]]:
                 if nc_sync_user_id and nc_sync_user_id.nc_calendar_id:
@@ -239,7 +239,7 @@ class CalendarEvent(models.Model):
                                      False) and not record.nc_event_updateable and detach:
                 default_calendar_id = (
                     self.env["nc.sync.user"]
-                    .search([("user_id", "=", self.env.user.id)], limit=1)
+                    .search([("user_id", "=", self.env.user.id),("sync_calendar", "=", True)], limit=1)
                     .mapped("nc_calendar_id")
                 )
                 raise UserError(_('You cannot update nextcloud events for calendars other than default one(%s)',
@@ -263,7 +263,7 @@ class CalendarEvent(models.Model):
                     raise UserError(_('You cannot delete nextcloud events if you are not the organizer'))
             default_calendar_id = (
                 self.env["nc.sync.user"]
-                .search([("user_id", "=", self.env.user.id)], limit=1)
+                .search([("user_id", "=", self.env.user.id),("sync_calendar", "=", True)], limit=1)
                 .mapped("nc_calendar_id")
             )
             has_nc_uids = self.filtered(lambda r: r.nc_uid and r.nc_calendar_id == default_calendar_id)

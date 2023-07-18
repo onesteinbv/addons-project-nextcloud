@@ -27,7 +27,7 @@ class ResUsers(models.Model):
         return action
 
     def sync_user_events(self):
-        sync_users = self.env["nc.sync.user"].search([("user_id", "=", self.id)])
+        sync_users = self.env["nc.sync.user"].search([("user_id", "=", self.id)],limit=1)
         if not sync_users:
             raise UserError("Sync User not found")
         elif sync_users and not sync_users.sync_calendar:
