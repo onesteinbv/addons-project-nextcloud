@@ -137,7 +137,8 @@ class NcSyncUser(models.Model):
                     ]
                 )
                 .filtered(
-                    lambda x: (not x.nc_calendar_ids) and x.start >= datetime.combine(self.start_date or date.today(), datetime.min.time())
+                    lambda x: (not x.nc_calendar_ids) and x.start >= datetime.combine(self.start_date or date.today(),
+                                                                                      datetime.min.time())
                 )
             )
             # calendar_ids = calendar_event_ids.nc_calendar_ids.filtered(
@@ -344,7 +345,7 @@ class NcSyncUser(models.Model):
         for user in self:
             start_date = datetime.combine(self.start_date or date.today(), datetime.min.time())
             if not events:
-                events = self.env["calendar.event"].sudo().search([('start', '>=', start_date)],order="start")
+                events = self.env["calendar.event"].sudo().search([('start', '>=', start_date)], order="start")
             try:
                 connection_dict = self.get_user_connection()
                 principal = connection_dict.get("principal", False)
@@ -360,7 +361,7 @@ class NcSyncUser(models.Model):
                 # Get all Odoo events where user is organizer or attendee
                 od_event_ids = events.filtered(
                     lambda x: x.user_id == user.user_id
-                              or (x.partner_ids and user.partner_id in x.partner_ids)
+                    or (x.partner_ids and user.partner_id in x.partner_ids)
                 )
                 for event in od_event_ids:
                     # if event is not yet syned into nextcloud but the current
@@ -538,4 +539,4 @@ class NcSyncUser(models.Model):
                     event_vals = user.get_event_data(item)
                     if event_vals["uid"] == nc_uid:
                         return event_vals["hash"], nc_calendar_id
-        return False,False
+        return False, False
