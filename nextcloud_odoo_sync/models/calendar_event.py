@@ -70,7 +70,7 @@ class CalendarEvent(models.Model):
                 else:
                     event.nc_rid = event.start.strftime("%Y%m%d")
             else:
-                event.nc_rid = False
+                event.nc_rid = event.nc_rid or False
 
     @api.depends("nc_calendar_ids")
     def _compute_nc_calendar(self):
