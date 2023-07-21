@@ -107,19 +107,22 @@ class Nextcloudcaldav(models.AbstractModel):
                                         "od_event": base_event,
                                         "event_hash": False,
                                     }
-                                    nc_events_dict["create"].append(base_event_vals)
-                                    nc_events_create.append(base_event)
+                                    if sync_user_id.user_id == od_event.user_id:
+                                        nc_events_dict["create"].append(base_event_vals)
+                                        nc_events_create.append(base_event)
                                     continue
                             else:
                                 if od_event not in nc_events_create:
-                                    nc_events_dict["create"].append(ode)
-                                    nc_events_create.append(od_event)
+                                    if sync_user_id.user_id == od_event.user_id:
+                                        nc_events_dict["create"].append(ode)
+                                        nc_events_create.append(od_event)
                                     continue
                         else:
-                            od_event.nc_uid = duplicate["nc_uid"]
-                            ode["nc_uid"] = duplicate["nc_uid"]
-                            duplicate["od_event"] = od_event
-                            od_events_dict["write"].append(duplicate)
+                            if sync_user_id.user_id == od_event.user_id:
+                                od_event.nc_uid = duplicate["nc_uid"]
+                                ode["nc_uid"] = duplicate["nc_uid"]
+                                duplicate["od_event"] = od_event
+                                od_events_dict["write"].append(duplicate)
                             continue
                 if ode["nc_uid"] and ode["event_hash"]:
                     valid_nc_uid = False
@@ -145,8 +148,9 @@ class Nextcloudcaldav(models.AbstractModel):
                                             "status" not in vevent.contents
                                             or vevent.status.value.lower() == "cancelled"
                                     ):
-                                        if nce not in od_events_dict["delete"]:
-                                            od_events_dict["delete"].append(nce)
+                                        if sync_user_id.user_id == od_event.user_id:
+                                            if nce not in od_events_dict["delete"]:
+                                                od_events_dict["delete"].append(nce)
                                     if (
                                             od_event.nc_to_delete
                                     ):
@@ -453,8 +457,9 @@ class Nextcloudcaldav(models.AbstractModel):
                     # Case 4: If the value of Odoo nc_uid is not found in all
                     # of Nextcloud events, then it was deleted in Nextcloud
                     if not valid_nc_uid:
-                        if ode not in od_events_dict["delete"]:
-                            od_events_dict["delete"].append(ode)
+                        if sync_user_id.user_id == od_event.user_id:
+                            if ode not in od_events_dict["delete"]:
+                                od_events_dict["delete"].append(ode)
             # Nextcloud -> Odoo
             for nce in nc_events:
                 vevent = nce["nc_caldav"].vobject_instance.vevent
