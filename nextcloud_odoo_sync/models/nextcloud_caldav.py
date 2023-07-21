@@ -109,18 +109,23 @@ class Nextcloudcaldav(models.AbstractModel):
                                     }
                                     nc_events_dict["create"].append(base_event_vals)
                                     nc_events_create.append(base_event)
+                                    continue
                             else:
                                 if od_event not in nc_events_create:
                                     nc_events_dict["create"].append(ode)
                                     nc_events_create.append(od_event)
+                                    continue
                         else:
                             od_event.nc_uid = duplicate["nc_uid"]
                             ode["nc_uid"] = duplicate["nc_uid"]
                             duplicate["od_event"] = od_event
                             od_events_dict["write"].append(duplicate)
+                            continue
                 if ode["nc_uid"] and ode["event_hash"]:
                     valid_nc_uid = False
                     for nextcloud_event in nc_events:
+                        if valid_nc_uid:
+                            break
                         nce = nextcloud_event.copy()
                         if ode["nc_uid"] == nce["nc_uid"]:
                             valid_nc_uid = True
@@ -174,12 +179,14 @@ class Nextcloudcaldav(models.AbstractModel):
                                                         )
                                                         od_last_modified = od_event.write_date
                                                         if od_last_modified > nc_last_modified:
-                                                            if ode not in nc_events_dict["write"]:
+                                                            if ode not in nc_events_dict["write"] and not od_event.nc_synced:
                                                                 nc_events_dict["write"].append(ode)
                                                         else:
-                                                            if ode not in nc_events_dict[
-                                                                "write"]:
+                                                            if nce not in od_events_dict["write"]:
                                                                 od_events_dict["write"].append(nce)
+                                                    else:
+                                                        if ode not in nc_events_dict["write"] and not od_event.nc_synced:
+                                                            nc_events_dict["write"].append(ode)
                                                 else:
                                                     if od_event == od_event.recurrence_id.base_event_id:
                                                         if "LAST-MODIFIED" in nce["nc_event"][0]:
@@ -197,8 +204,13 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                 if ode not in nc_events_dict[
                                                                     "write"] and not od_event.nc_synced:
                                                                     nc_events_dict["write"].append(ode)
+                                                        else:
+                                                            if ode not in nc_events_dict[
+                                                                "write"] and not od_event.nc_synced:
+                                                                nc_events_dict["write"].append(ode)
                                                     if od_event.nc_rid:
                                                         od_event_nc_rid = od_event.nc_rid
+                                                        nc_modified = False
                                                         for nce_events_dict in nce["nc_event"]:
                                                             matching_values = [
                                                                 value for key, value in nce_events_dict.items()
@@ -211,10 +223,11 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                         nce_events_dict["LAST-MODIFIED"],
                                                                         "%Y%m%dT%H%M%SZ",
                                                                     )
+                                                                    nc_modified = True
                                                                     od_last_modified = od_event.write_date
                                                                     if od_last_modified > nc_last_modified:
                                                                         if ode not in nc_events_dict[
-                                                                            "write"]:
+                                                                            "write"] and not od_event.nc_synced:
                                                                             nc_events_dict["write"].append(ode)
                                                                     else:
                                                                         if nce not in od_events_dict["write"]:
@@ -223,6 +236,11 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                                 {'nc_event': [nce_events_dict]})
                                                                             od_events_dict["write"].append(
                                                                                 recurring_nce)
+                                                                    break
+                                                        if not nc_modified:
+                                                            if ode not in nc_events_dict[
+                                                                "write"] and not od_event.nc_synced:
+                                                                nc_events_dict["write"].append(ode)
                                     else:
                                         if ode not in nc_events_dict["delete"]:
                                             nc_events_dict["delete"].append(ode)
@@ -260,11 +278,14 @@ class Nextcloudcaldav(models.AbstractModel):
                                                         )
                                                         od_last_modified = od_event.write_date
                                                         if od_last_modified > nc_last_modified:
-                                                            if ode not in nc_events_dict["write"]:
+                                                            if ode not in nc_events_dict["write"] and not od_event.nc_synced:
                                                                 nc_events_dict["write"].append(ode)
                                                         else:
                                                             if nce not in od_events_dict["write"]:
                                                                 od_events_dict["write"].append(nce)
+                                                    else:
+                                                        if ode not in nc_events_dict["write"] and not od_event.nc_synced:
+                                                            nc_events_dict["write"].append(ode)
                                                 else:
                                                     if od_event == od_event.recurrence_id.base_event_id:
                                                         if "LAST-MODIFIED" in nce["nc_event"][0]:
@@ -282,8 +303,13 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                 if ode not in nc_events_dict[
                                                                     "write"] and not od_event.nc_synced:
                                                                     nc_events_dict["write"].append(ode)
+                                                        else:
+                                                            if ode not in nc_events_dict[
+                                                                "write"] and not od_event.nc_synced:
+                                                                nc_events_dict["write"].append(ode)
                                                     if od_event.nc_rid:
                                                         od_event_nc_rid = od_event.nc_rid
+                                                        nc_modified = False
                                                         for nce_events_dict in nce["nc_event"]:
                                                             matching_values = [
                                                                 value for key, value in nce_events_dict.items()
@@ -298,7 +324,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                     )
                                                                     od_last_modified = od_event.write_date
                                                                     if od_last_modified > nc_last_modified:
-                                                                        if ode not in nc_events_dict["write"]:
+                                                                        if ode not in nc_events_dict["write"] and not od_event.nc_synced:
                                                                             nc_events_dict["write"].append(ode)
                                                                     else:
                                                                         if nce not in od_events_dict["write"]:
@@ -307,6 +333,12 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                                 {'nc_event': [nce_events_dict]})
                                                                             od_events_dict["write"].append(
                                                                                 recurring_nce)
+                                                                    nc_modified = True
+                                                                    break
+                                                        if not nc_modified:
+                                                            if ode not in nc_events_dict[
+                                                                "write"] and not od_event.nc_synced:
+                                                                nc_events_dict["write"].append(ode)
                                             else:
                                                 # revert the event of attendee
                                                 # in nextcloud to event of
@@ -353,11 +385,14 @@ class Nextcloudcaldav(models.AbstractModel):
                                                     )
                                                     od_last_modified = od_event.write_date
                                                     if od_last_modified > nc_last_modified:
-                                                        if ode not in nc_events_dict["write"]:
+                                                        if ode not in nc_events_dict["write"] and not od_event.nc_synced:
                                                             nc_events_dict["write"].append(ode)
                                                     else:
                                                         if nce not in od_events_dict["write"]:
                                                             od_events_dict["write"].append(nce)
+                                                else:
+                                                    if ode not in nc_events_dict["write"] and not od_event.nc_synced:
+                                                        nc_events_dict["write"].append(ode)
                                             else:
                                                 if od_event == od_event.recurrence_id.base_event_id:
                                                     if "LAST-MODIFIED" in nce["nc_event"][0]:
@@ -375,8 +410,13 @@ class Nextcloudcaldav(models.AbstractModel):
                                                             if ode not in nc_events_dict[
                                                                 "write"] and not od_event.nc_synced:
                                                                 nc_events_dict["write"].append(ode)
+                                                    else:
+                                                        if ode not in nc_events_dict[
+                                                            "write"] and not od_event.nc_synced:
+                                                            nc_events_dict["write"].append(ode)
                                                 if od_event.nc_rid:
                                                     od_event_nc_rid = od_event.nc_rid
+                                                    nc_modified = False
                                                     for nce_events_dict in nce["nc_event"]:
                                                         matching_values = [
                                                             value for key, value in nce_events_dict.items()
@@ -391,7 +431,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                 )
                                                                 od_last_modified = od_event.write_date
                                                                 if od_last_modified > nc_last_modified:
-                                                                    if ode not in nc_events_dict["write"]:
+                                                                    if ode not in nc_events_dict["write"] and not od_event.nc_synced:
                                                                         nc_events_dict["write"].append(ode)
                                                                 else:
                                                                     if nce not in od_events_dict["write"]:
@@ -399,7 +439,12 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                         recurring_nce.update(
                                                                             {'nc_event': [nce_events_dict]})
                                                                         od_events_dict["write"].append(recurring_nce)
-
+                                                                nc_modified=True
+                                                                break
+                                                    if not nc_modified:
+                                                        if ode not in nc_events_dict[
+                                                            "write"] and not od_event.nc_synced:
+                                                            nc_events_dict["write"].append(ode)
                     # Case 4: If the value of Odoo nc_uid is not found in all
                     # of Nextcloud events, then it was deleted in Nextcloud
                     if not valid_nc_uid:
@@ -1593,9 +1638,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                         if event_id.nextcloud_event_timezone != tz:
                                             res['nextcloud_event_timezone'] = tz
                             event_id.recurrence_id.calendar_event_ids.with_context(sync_from_nextcloud=True).write(res)
-                            event_id.write({"nc_synced": True})
                         else:
-                            res.update({"nc_synced": True})
                             event_id.with_context(sync_from_nextcloud=True).write(res)
                         # Commit the changes to the database since it is
                         # already been updated in Nextcloud

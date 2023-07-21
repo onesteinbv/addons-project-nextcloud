@@ -220,8 +220,7 @@ class CalendarEvent(models.Model):
         :params vals: Dictionary of record changes
         :return Super: add changes into this predefined functions
         """
-        if not self._context.get("sync", False) and "nc_synced" not in vals:
-            vals["nc_synced"] = False
+
         ex_fields = [
             "nc_uid",
             "nc_rid",
@@ -229,7 +228,6 @@ class CalendarEvent(models.Model):
             "nc_synced",
             "nc_to_delete",
             "recurrence_id",
-            "nc_calendar_select",
         ]
         fields_to_update = list(vals.keys())
         detach = False
@@ -237,6 +235,16 @@ class CalendarEvent(models.Model):
             if f not in ex_fields:
                 detach = True
                 break
+        ex_fields.extend(["nc_calendar_select",
+                          "nc_allday",
+                          "nextcloud_event_timezone", "event_tz", "write_date"])
+        record_updated = False
+        for f in fields_to_update:
+            if f not in ex_fields:
+                record_updated = True
+                break
+        if not self._context.get("sync", False) and "nc_synced" not in vals and record_updated:
+            vals["nc_synced"] = False
         for record in self:
             # Detach the record from recurring event whenever an edit was made
             # to make it compatible when synced to Nextcloud calendar
