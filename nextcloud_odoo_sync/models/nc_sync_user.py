@@ -32,9 +32,9 @@ class NcSyncUser(models.Model):
     partner_id = fields.Many2one(
         "res.partner", "Partner", related="user_id.partner_id", store=True
     )
-    nc_calendar_id = fields.Many2one("nc.calendar", "Default Nextcloud Calendar(2 Way Sync)")
+    nc_calendar_id = fields.Many2one("nc.calendar", "Default Calendar",help="Allows 2 way syncing with this calendar")
     nc_calendar_ids = fields.Many2many("nc.calendar", "nc_sync_user_nc_calendar_rel", "sync_user_id", "nc_calendar_id",
-                                       string="Show Other Nextcloud Calendars")
+                                       string="Show Other Calendars")
     nc_hash_ids = fields.One2many(
         "calendar.event.nchash", "nc_sync_user_id", "Hash Values"
     )
