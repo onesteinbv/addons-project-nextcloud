@@ -228,6 +228,7 @@ class CalendarEvent(models.Model):
             "nc_synced",
             "nc_to_delete",
             "recurrence_id",
+            "nc_calendar_select"
         ]
         fields_to_update = list(vals.keys())
         detach = False
@@ -235,9 +236,7 @@ class CalendarEvent(models.Model):
             if f not in ex_fields:
                 detach = True
                 break
-        ex_fields.extend(["nc_calendar_select",
-                          "nc_allday",
-                          "nextcloud_event_timezone", "event_tz", "write_date"])
+        ex_fields.extend(["nc_allday","nextcloud_event_timezone", "event_tz", "write_date"])
         record_updated = False
         for f in fields_to_update:
             if f not in ex_fields:
