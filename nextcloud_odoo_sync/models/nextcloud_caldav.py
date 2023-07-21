@@ -251,8 +251,9 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                 "write"] and not od_event.nc_synced:
                                                                 nc_events_dict["write"].append(ode)
                                     else:
-                                        if ode not in nc_events_dict["delete"]:
-                                            nc_events_dict["delete"].append(ode)
+                                        if sync_user_id.user_id == od_event.user_id:
+                                            if ode not in nc_events_dict["delete"]:
+                                                nc_events_dict["delete"].append(ode)
                             # Case 3: If both hash differs
                             else:
                                 # Case 3.a: If Odoo event has no change
