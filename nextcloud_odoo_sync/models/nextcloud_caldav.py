@@ -107,18 +107,18 @@ class Nextcloudcaldav(models.AbstractModel):
                                         "od_event": base_event,
                                         "event_hash": False,
                                     }
-                                    if sync_user_id.user_id == od_event.user_id:
+                                    if od_event.user_id and sync_user_id.user_id == od_event.user_id:
                                         nc_events_dict["create"].append(base_event_vals)
                                         nc_events_create.append(base_event)
                                     continue
                             else:
                                 if od_event not in nc_events_create:
-                                    if sync_user_id.user_id == od_event.user_id:
+                                    if od_event.user_id and sync_user_id.user_id == od_event.user_id:
                                         nc_events_dict["create"].append(ode)
                                         nc_events_create.append(od_event)
                                     continue
                         else:
-                            if sync_user_id.user_id == od_event.user_id:
+                            if od_event.user_id and sync_user_id.user_id == od_event.user_id:
                                 od_event.nc_uid = duplicate["nc_uid"]
                                 ode["nc_uid"] = duplicate["nc_uid"]
                                 duplicate["od_event"] = od_event
@@ -148,14 +148,15 @@ class Nextcloudcaldav(models.AbstractModel):
                                             "status" not in vevent.contents
                                             or vevent.status.value.lower() == "cancelled"
                                     ):
-                                        if sync_user_id.user_id == od_event.user_id:
+                                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
                                             if nce not in od_events_dict["delete"]:
                                                 od_events_dict["delete"].append(nce)
                                     if (
                                             od_event.nc_to_delete
                                     ):
-                                        if ode not in nc_events_dict["delete"]:
-                                            nc_events_dict["delete"].append(ode)
+                                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                            if ode not in nc_events_dict["delete"]:
+                                                nc_events_dict["delete"].append(ode)
                                 else:
                                     if (
                                             od_event.nc_status_id
@@ -169,14 +170,15 @@ class Nextcloudcaldav(models.AbstractModel):
                                         if (
                                                 od_event.nc_to_delete
                                         ):
-                                            if ode not in nc_events_dict["delete"]:
-                                                nc_events_dict["delete"].append(ode)
+                                            if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                                if ode not in nc_events_dict["delete"]:
+                                                    nc_events_dict["delete"].append(ode)
                                         # Case 2.c: If there are changes to
                                         # sync (nc_sycned=False) but not to
                                         # delete (nc_to_delete=False), update
                                         # Nextcloud event
                                         else:
-                                            if sync_user_id.user_id == od_event.user_id:
+                                            if od_event.user_id and sync_user_id.user_id == od_event.user_id:
                                                 if not od_event.recurrence_id:
                                                     if "LAST-MODIFIED" in nce["nc_event"][0]:
                                                         # The "Z" stands for Zulu time
@@ -251,7 +253,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                 "write"] and not od_event.nc_synced:
                                                                 nc_events_dict["write"].append(ode)
                                     else:
-                                        if sync_user_id.user_id == od_event.user_id:
+                                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
                                             if ode not in nc_events_dict["delete"]:
                                                 nc_events_dict["delete"].append(ode)
                             # Case 3: If both hash differs
@@ -265,7 +267,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                             "status" not in vevent.contents
                                             or vevent.status.value.lower() == "cancelled"
                                     ):
-                                        if sync_user_id.user_id == od_event.user_id:
+                                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
                                             if nce not in od_events_dict["delete"]:
                                                 od_events_dict["delete"].append(nce)
                                     else:
@@ -276,7 +278,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                             # hence we retrict modification to
                                             # odoo event by the attendee as
                                             # well
-                                            if sync_user_id.user_id == od_event.user_id:
+                                            if od_event.user_id and sync_user_id.user_id == od_event.user_id:
                                                 if not od_event.recurrence_id:
                                                     if "LAST-MODIFIED" in nce["nc_event"][0]:
                                                         # The "Z" stands for Zulu time
@@ -375,15 +377,16 @@ class Nextcloudcaldav(models.AbstractModel):
                                     # (nc_to_delete=True), delete Nextcloud
                                     # event
                                     if not od_event.nc_synced and od_event.nc_to_delete:
-                                        if ode not in nc_events_dict["delete"]:
-                                            nc_events_dict["delete"].append(ode)
+                                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                            if ode not in nc_events_dict["delete"]:
+                                                nc_events_dict["delete"].append(ode)
                                     # Case 3.c: If Odoo has changes
                                     # (nc_synced=False) and not to delete
                                     # (nc_to_delete=False)
                                     else:
                                         # Check LAST-MODIFIED date value in
                                         # Nextcloud event
-                                        if sync_user_id.user_id == od_event.user_id:
+                                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
                                             if not od_event.recurrence_id:
                                                 if "LAST-MODIFIED" in nce["nc_event"][0]:
                                                     # The "Z" stands for Zulu time
@@ -458,7 +461,7 @@ class Nextcloudcaldav(models.AbstractModel):
                     # Case 4: If the value of Odoo nc_uid is not found in all
                     # of Nextcloud events, then it was deleted in Nextcloud
                     if not valid_nc_uid:
-                        if sync_user_id.user_id == od_event.user_id:
+                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
                             if ode not in od_events_dict["delete"]:
                                 od_events_dict["delete"].append(ode)
             # Nextcloud -> Odoo
@@ -505,25 +508,26 @@ class Nextcloudcaldav(models.AbstractModel):
                     # its a previous event in Nextcloud that might have been
                     # deleted
                     if od_event.nc_uid:
-                        if sync_user_id.user_id == od_event.user_id:
+                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
                             od_events_dict["delete"].append(ode)
                     else:
                         # Case 7.b: If the event has no nc_uid value then its a
                         # new event in Odoo to be created in Nextcloud
-                        if od_event.recurrence_id:
-                            base_event = od_event.recurrence_id.base_event_id
-                            if not base_event.nc_uid and base_event not in nc_events_create:
-                                base_event_vals = {
-                                    "nc_uid": base_event.nc_uid,
-                                    "od_event": base_event,
-                                    "event_hash": False,
-                                }
-                                nc_events_dict["create"].append(base_event_vals)
-                                nc_events_create.append(base_event)
-                        else:
-                            if od_event not in nc_events_create:
-                                nc_events_dict["create"].append(ode)
-                                nc_events_create.append(od_event)
+                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                            if od_event.recurrence_id:
+                                base_event = od_event.recurrence_id.base_event_id
+                                if not base_event.nc_uid and base_event not in nc_events_create:
+                                    base_event_vals = {
+                                        "nc_uid": base_event.nc_uid,
+                                        "od_event": base_event,
+                                        "event_hash": False,
+                                    }
+                                    nc_events_dict["create"].append(base_event_vals)
+                                    nc_events_create.append(base_event)
+                            else:
+                                if od_event not in nc_events_create:
+                                    nc_events_dict["create"].append(ode)
+                                    nc_events_create.append(od_event)
 
         return od_events_dict, nc_events_dict
 
