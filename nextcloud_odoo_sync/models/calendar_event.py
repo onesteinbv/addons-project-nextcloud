@@ -2,6 +2,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import ast
+import pytz
 
 from odoo import api, models, fields, _
 from odoo.exceptions import UserError
@@ -42,6 +43,7 @@ class CalendarEvent(models.Model):
     nc_allday = fields.Boolean("Nextcloud All day")
     nc_detach = fields.Boolean("Detach from recurring event")
     nc_event_updateable = fields.Boolean("Event Updateable In Nextcloud",compute="_compute_nc_event_updateable")
+    nextcloud_event_timezone = fields.Char('Nextcloud Event Timezone')
 
     @api.model
     def default_get(self, fields):
@@ -57,16 +59,22 @@ class CalendarEvent(models.Model):
         ).id
         return res
 
-    @api.depends("recurrence_id")
+    @api.depends("recurrence_id","allday","start","event_tz","nextcloud_event_timezone")
     def _compute_nc_rid(self):
         """
         This method generates a value for RECURRENCE-ID
         of Nextcloud recurring event
         """
         for event in self:
-            if event.recurrence_id and not event.nc_rid:
+            if event.recurrence_id:
                 if not event.allday:
-                    event.nc_rid = event.start.strftime("%Y%m%dT%H%M%S")
+                    start = event.start
+                    tz = event.nextcloud_event_timezone or event.event_tz
+                    if tz:
+                        dt_tz = start.replace(tzinfo=pytz.utc)
+                        start = dt_tz.astimezone(
+                            pytz.timezone(tz))
+                    event.nc_rid = start.strftime("%Y%m%dT%H%M%S")
                 else:
                     event.nc_rid = event.start.strftime("%Y%m%d")
             else:
