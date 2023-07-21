@@ -147,6 +147,11 @@ class Nextcloudcaldav(models.AbstractModel):
                                     ):
                                         if nce not in od_events_dict["delete"]:
                                             od_events_dict["delete"].append(nce)
+                                    if (
+                                            od_event.nc_to_delete
+                                    ):
+                                        if ode not in nc_events_dict["delete"]:
+                                            nc_events_dict["delete"].append(ode)
                                 else:
                                     if (
                                             od_event.nc_status_id
