@@ -1170,11 +1170,6 @@ class Nextcloudcaldav(models.AbstractModel):
                         # Perform write operation
                         if operation == "write" and od_event_id:
                             try:
-                                # Process exempted dates: these are deleted
-                                # recurring instance in Nextcloud
-                                all_odoo_event_ids = self.delete_exempted_event(
-                                    od_event_id, exdates, all_odoo_event_ids
-                                )
                                 # We don"t update if the event only contains
                                 # rrule but no nc_rid
                                 if "rrule" in vals and "nc_rid" not in vals:
@@ -1183,14 +1178,17 @@ class Nextcloudcaldav(models.AbstractModel):
                                             if od_event_id.start != vals['start'] or od_event_id.stop != vals[
                                                 'stop'] or (
                                                     vals.get('location', False) and od_event_id.location != vals.get(
-                                                    'location')) \
+                                                'location')) \
                                                     or (vals.get('description',
                                                                  False) and od_event_id.description != vals.get(
                                                 'description')) \
                                                     or (
-                                                    vals.get('name', False) and od_event_id.name != vals.get('name')):
+                                                    vals.get('name', False) and od_event_id.name != vals.get('name')) \
+                                                    or (
+                                                    vals.get('nextcloud_event_timezone', False) and od_event_id.nextcloud_event_timezone != vals.get('nextcloud_event_timezone')
+                                            ):
                                                 (
-                                                            od_event_id.recurrence_id.calendar_event_ids - od_event_id.recurrence_id.base_event_id).write(
+                                                        od_event_id.recurrence_id.calendar_event_ids - od_event_id.recurrence_id.base_event_id).write(
                                                     {'nc_uid': False})
                                                 recurrence_vals = {'start': vals.get('start', False),
                                                                    'recurrence_update': 'all_events',
@@ -1205,6 +1203,8 @@ class Nextcloudcaldav(models.AbstractModel):
                                                     recurrence_vals.update({'categ_ids': vals['categ_ids']})
                                                 if vals.get('alarm_ids', False):
                                                     recurrence_vals.update({'alarm_ids': vals['alarm_ids']})
+                                                if vals.get('nextcloud_event_timezone', False):
+                                                    recurrence_vals.update({'nextcloud_event_timezone': vals['nextcloud_event_timezone']})
                                                 od_event_id.recurrence_id.base_event_id.with_context(
                                                     sync_from_nextcloud=True).write(recurrence_vals)
                                                 for hash_vals in hash_vals_list:
@@ -1213,6 +1213,10 @@ class Nextcloudcaldav(models.AbstractModel):
                                                     )
                                         for hash_vals in hash_vals_list:
                                             self.update_event_hash(hash_vals, od_event_id)
+                                    all_odoo_event_ids = self.delete_exempted_event(
+                                        od_event_id, exdates, all_odoo_event_ids
+                                    )
+                                    self.env.cr.commit()
                                     params["write_count"] += 1
                                     continue
                                 # Check if the event is part of recurring event
@@ -1232,6 +1236,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                         continue
                                     else:
                                         od_event_id = recurring_event_id
+                                vals.pop('nextcloud_event_timezone',None)
                                 od_event_id.with_context(sync_from_nextcloud=True).write(vals)
                                 # # Update the hash value of the Odoo event that
                                 # # corresponds to the current user_id
@@ -1243,6 +1248,9 @@ class Nextcloudcaldav(models.AbstractModel):
                                 self.update_attendee_invite(od_event_id)
                                 for hash_vals in hash_vals_list:
                                     self.update_event_hash(hash_vals, od_event_id)
+                                all_odoo_event_ids = self.delete_exempted_event(
+                                    od_event_id, exdates, all_odoo_event_ids
+                                )
                                 # Commit the changes to the database
                                 self.env.cr.commit()
                                 params["write_count"] += 1
@@ -1524,7 +1532,7 @@ class Nextcloudcaldav(models.AbstractModel):
                             vevent.uid.value
                         )
                         # Update the Odoo event record
-                        res = {"nc_uid": vevent.uid.value}
+                        res = {"nc_uid": vevent.uid.value, 'nc_synced': True}
                         if event_id.nc_detach:
                             res.update(
                                 {
@@ -1572,14 +1580,18 @@ class Nextcloudcaldav(models.AbstractModel):
                                         },
                                     )
                                 )
-                        if caldav_event.icalendar_component.get('DTSTART'):
-                            event_start_date = caldav_event.icalendar_component.get('DTSTART').dt
-                            tz = False
-                            if isinstance(event_start_date, datetime):
-                                tz = event_start_date.tzinfo.zone
-                            if tz:
-                                vals['nextcloud_event_timezone'] = tz
+
                         if event_id.recurrence_id:
+                            if event_id.recurrence_id.base_event_id == event_id:
+                                if caldav_event.icalendar_component.get(
+                                        'DTSTART') and caldav_event.icalendar_component.get('RRULE'):
+                                    event_start_date = caldav_event.icalendar_component.get('DTSTART').dt
+                                    tz = False
+                                    if isinstance(event_start_date, datetime):
+                                        tz = event_start_date.tzinfo.zone
+                                    if tz:
+                                        if event_id.nextcloud_event_timezone != tz:
+                                            res['nextcloud_event_timezone'] = tz
                             event_id.recurrence_id.calendar_event_ids.with_context(sync_from_nextcloud=True).write(res)
                             event_id.write({"nc_synced": True})
                         else:
