@@ -44,6 +44,7 @@ class CalendarEvent(models.Model):
     nc_detach = fields.Boolean("Detach from recurring event")
     nc_event_updateable = fields.Boolean("Event Updateable In Nextcloud",compute="_compute_nc_event_updateable")
     nextcloud_event_timezone = fields.Char('Nextcloud Event Timezone')
+    nextcloud_calendar_type = fields.Char('Nextcloud Calendar Type')
 
     @api.model
     def default_get(self, fields):
@@ -97,11 +98,13 @@ class CalendarEvent(models.Model):
             event.nc_calendar_id = calendar
             event.nc_calendar_select = str(calendar) if calendar else False
 
-    @api.depends('nc_calendar_id')
+    @api.depends('nc_calendar_id','nextcloud_calendar_type')
     def _compute_nc_event_updateable(self):
         for event in self:
             nc_event_updateable = True
-            if event.nc_calendar_id:
+            if event.nextcloud_calendar_type:
+                nc_event_updateable = False
+            elif event.nc_calendar_id:
                 default_calendar_id = (
                     self.env["nc.sync.user"]
                     .search([("user_id", "=", self.env.user.id),("sync_calendar", "=", True)], limit=1)
@@ -236,7 +239,7 @@ class CalendarEvent(models.Model):
             if f not in ex_fields:
                 detach = True
                 break
-        ex_fields.extend(["nc_allday","nextcloud_event_timezone", "event_tz", "write_date"])
+        ex_fields.extend(["nc_allday","nextcloud_event_timezone", "event_tz", "write_date","nextcloud_calendar_type"])
         record_updated = False
         for f in fields_to_update:
             if f not in ex_fields:
@@ -252,6 +255,8 @@ class CalendarEvent(models.Model):
                 raise UserError(_('You cannot update nextcloud events if you are not the organizer'))
             if not self._context.get("sync_from_nextcloud",
                                      False) and not record.nc_event_updateable and detach:
+                if record.nextcloud_calendar_type:
+                    raise UserError(_('You cannot update nextcloud events for Birthday calendars'))
                 default_calendar_id = (
                     self.env["nc.sync.user"]
                     .search([("user_id", "=", self.env.user.id),("sync_calendar", "=", True)], limit=1)

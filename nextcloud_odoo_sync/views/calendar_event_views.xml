@@ -49,6 +49,7 @@
 				<field name="nc_calendar_ids" widget="many2many_tags" invisible="1"/>
 				<field name="nc_require_calendar" invisible="1"/>
 				<field name="nc_event_updateable" invisible="1"/>
+				<field name="nextcloud_calendar_type" invisible="1"/>
 			</field>
 
 			<field name="alarm_ids" position="replace">
@@ -69,8 +70,11 @@
 					Events created in Odoo is Public by default. Check Privacy in Options tab to change to Private otherwise.<br/>
 					The following reminders are not supported in Nextcloud and will not be synced: <i>Email - 3 Hours</i>, <i>Email - 6 Hours</i>
                 </div>
-				<div class="alert alert-info" role="alert" style="margin-bottom:0px;" attrs="{'invisible': [('nc_event_updateable', '=', True)]}">
+				<div class="alert alert-info" role="alert" style="margin-bottom:0px;" attrs="{'invisible': ['|',('nc_event_updateable', '=', True),('nextcloud_calendar_type','!=',False)]}">
 					You cannot create/update nextcloud events for calendars other than default one
+                </div>
+				<div class="alert alert-info" role="alert" style="margin-bottom:0px;" attrs="{'invisible': ['|',('nc_event_updateable', '=', True),('nextcloud_calendar_type','=',False)]}">
+					You cannot update nextcloud events for Birthday calendars
                 </div>
 			</xpath>
       	</field>
