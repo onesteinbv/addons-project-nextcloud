@@ -32,7 +32,7 @@ class NcSyncUser(models.Model):
     partner_id = fields.Many2one(
         "res.partner", "Partner", related="user_id.partner_id", store=True
     )
-    nc_calendar_id = fields.Many2one("nc.calendar", "Default Calendar",help="Allows 2 way syncing with this calendar")
+    nc_calendar_id = fields.Many2one("nc.calendar", "Default Calendar", help="Allows 2 way syncing with this calendar")
     nc_calendar_ids = fields.Many2many("nc.calendar", "nc_sync_user_nc_calendar_rel", "sync_user_id", "nc_calendar_id",
                                        string="Show Other Calendars")
     nc_hash_ids = fields.One2many(
@@ -125,6 +125,21 @@ class NcSyncUser(models.Model):
         """
         nc_calendar_ids = []
         calendar_event_obj = self.env["calendar.event"]
+        if vals.get('user_name') or vals.get('nc_password') or vals.get('nextcloud_url', False) or vals.get(
+                'sync_calendar'):
+            nextcloud_caldav_obj = self.env["nextcloud.caldav"]
+            for record in self:
+                nc_url = ((vals.get("nextcloud_url", "").strip("/") if vals.get(
+                    "nextcloud_url") else record.nextcloud_url) + "/remote.php/dav")
+                username = vals.get('user_name', False) or record.user_name
+                nc_password = vals.get('nc_password', False) or record.nc_password
+                connection, principal = nextcloud_caldav_obj.check_nextcloud_connection(
+                    url=nc_url, username=username, password=nc_password
+                )
+                if isinstance(principal, dict):
+                    sync_error = principal["sync_error_id"].name
+                    response = principal["response_description"]
+                    raise ValidationError(f"{sync_error}: {response}")
         if "nc_calendar_id" in vals:
             calendar_event_ids = (
                 calendar_event_obj
@@ -161,7 +176,6 @@ class NcSyncUser(models.Model):
                         [("partner_ids", "in", self.user_id.partner_id.id), ('nc_uid', '!=', False)]).filtered(
                         lambda x: len(x.nc_calendar_ids) == 1 and rec in x.nc_calendar_ids).with_context(
                         force_delete=True).unlink()
-
         return res
 
     def unlink(self):
@@ -203,9 +217,6 @@ class NcSyncUser(models.Model):
         return self.env.ref("calendar.action_calendar_event").sudo().read()[0]
 
     def get_user_connection(self):
-        """
-        Overriden to use nextcloud server url on a per user basis
-        """
         nc_url = (self.nextcloud_url + "/remote.php/dav")
         connection, principal = self.env["nextcloud.caldav"].check_nextcloud_connection(
             url=nc_url, username=self.user_name, password=self.nc_password
@@ -351,6 +362,7 @@ class NcSyncUser(models.Model):
                 principal = connection_dict.get("principal", False)
                 result["principal"] = principal
                 result["connection"] = connection_dict.get("connection", False)
+                self.get_user_calendars(principal)
             except Exception as error:
                 if log_obj:
                     log_obj.log_event("error", error=error, message="Nextcloud:")
@@ -361,7 +373,7 @@ class NcSyncUser(models.Model):
                 # Get all Odoo events where user is organizer or attendee
                 od_event_ids = events.filtered(
                     lambda x: x.user_id == user.user_id
-                    or (x.partner_ids and user.partner_id in x.partner_ids)
+                              or (x.partner_ids and user.partner_id in x.partner_ids)
                 )
                 for event in od_event_ids:
                     # if event is not yet syned into nextcloud but the current
