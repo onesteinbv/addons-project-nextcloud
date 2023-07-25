@@ -1879,7 +1879,7 @@ class Nextcloudcaldav(models.AbstractModel):
             except caldav.lib.error.NotFoundError as e:
                 _logger.warning("Error: %s" % e)
                 return client, {
-                    "sync_error_id": self.env.ref(
+                    "sync_error_id": self.sudo().env.ref(
                         "nextcloud_odoo_sync.nc_sync_error_1001"
                     ),
                     "response_description": str(e),
@@ -1887,7 +1887,7 @@ class Nextcloudcaldav(models.AbstractModel):
             except caldav.lib.error.AuthorizationError as e:
                 _logger.warning("Error: %s" % e)
                 return client, {
-                    "sync_error_id": self.env.ref(
+                    "sync_error_id": self.sudo().env.ref(
                         "nextcloud_odoo_sync.nc_sync_error_1000"
                     ),
                     "response_description": str(e),
@@ -1898,7 +1898,7 @@ class Nextcloudcaldav(models.AbstractModel):
             ) as e:
                 _logger.warning("Error: %s" % e)
                 return client, {
-                    "sync_error_id": self.env.ref(
+                    "sync_error_id": self.sudo().env.ref(
                         "nextcloud_odoo_sync.nc_sync_error_1001"
                     ),
                     "response_description": str(e),

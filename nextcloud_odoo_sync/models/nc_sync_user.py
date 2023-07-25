@@ -171,9 +171,9 @@ class NcSyncUser(models.Model):
         res = super(NcSyncUser, self).write(vals)
         if vals.get('nc_calendar_ids'):
             for rec in nc_calendar_ids:
-                if rec not in self.nc_calendar_ids and rec != self.nc_calendar_id:
+                if rec not in rec.nc_calendar_ids and rec != rec.nc_calendar_id:
                     calendar_event_obj.search(
-                        [("partner_ids", "in", self.user_id.partner_id.id), ('nc_uid', '!=', False)]).filtered(
+                        [("partner_ids", "in", rec.user_id.partner_id.id), ('nc_uid', '!=', False)]).filtered(
                         lambda x: len(x.nc_calendar_ids) == 1 and rec in x.nc_calendar_ids).with_context(
                         force_delete=True).unlink()
         return res
@@ -364,6 +364,13 @@ class NcSyncUser(models.Model):
                 result["connection"] = connection_dict.get("connection", False)
                 self.get_user_calendars(principal)
             except Exception as error:
+                if log_obj:
+                    log_obj.log_event("error", error=error, message="Nextcloud:")
+                    return result
+                else:
+                    raise ValidationError(_(error))
+            if not self.nc_calendar_id:
+                error = "Default Calendar is deleted from Nextcloud"
                 if log_obj:
                     log_obj.log_event("error", error=error, message="Nextcloud:")
                     return result
