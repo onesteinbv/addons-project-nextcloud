@@ -4,7 +4,7 @@
 from odoo import models, fields, _
 from dateutil import rrule
 from odoo.exceptions import UserError
-from datetime import datetime, time
+from datetime import timedelta
 
 SELECT_FREQ_TO_RRULE = {
     'daily': rrule.DAILY,
@@ -27,6 +27,9 @@ class CalendarRecurrence(models.Model):
 
     def _get_rrule(self, dtstart=None):
         self.ensure_one()
+        if self._context.get('sync_from_nextcloud',False):
+            if self.until:
+                self.until = self.until - timedelta(days=1)
         if not self.base_event_id.nc_calendar_id or self.end_type != 'forever':
             return super()._get_rrule(dtstart)
         freq = self.rrule_type

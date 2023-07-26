@@ -246,7 +246,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                             if nce not in od_events_dict["write"]:
                                                                                 recurring_nce = nce.copy()
                                                                                 recurring_nce.update(
-                                                                                    {'nc_event': [nce_events_dict]})
+                                                                                    {'nc_event': [nce_events_dict],'detach':True})
                                                                                 od_events_dict["write"].append(
                                                                                     recurring_nce)
                                                                         break
@@ -362,7 +362,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                         if nce not in od_events_dict["write"]:
                                                                             recurring_nce = nce.copy()
                                                                             recurring_nce.update(
-                                                                                {'nc_event': [nce_events_dict]})
+                                                                                {'nc_event': [nce_events_dict],'detach':True})
                                                                             od_events_dict["write"].append(
                                                                                 recurring_nce)
                                                                     nc_modified = True
@@ -470,7 +470,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                     if nce not in od_events_dict["write"]:
                                                                         recurring_nce = nce.copy()
                                                                         recurring_nce.update(
-                                                                            {'nc_event': [nce_events_dict]})
+                                                                            {'nc_event': [nce_events_dict],'detach':True})
                                                                         od_events_dict["write"].append(recurring_nce)
                                                                 nc_modified=True
                                                                 break
@@ -1007,6 +1007,8 @@ class Nextcloudcaldav(models.AbstractModel):
         for operation in od_events_dict:
             for event in od_events_dict[operation]:
                 od_event_id = event["od_event"] if "od_event" in event else False
+                new_event_id = False
+                detach = event.get('detach',False)
                 if od_event_id and not od_event_id.exists():
                     continue
                     # Perform delete operation
@@ -1036,6 +1038,8 @@ class Nextcloudcaldav(models.AbstractModel):
                     for vevent in nc_event:
                         if od_event_id and not od_event_id.exists():
                             continue
+                        if operation == 'create' and new_event_id:
+                            od_event_id = new_event_id
                         vals = {"nc_uid": event["nc_uid"]}
                         nc_uid = event["nc_uid"]
                         all_day = False
@@ -1111,6 +1115,9 @@ class Nextcloudcaldav(models.AbstractModel):
                         if all_day:
                             vals["start_date"] = vals.pop("start")
                             vals["stop_date"] = vals.pop("stop")
+                        if detach:
+                            vals['recurrence_id'] = False
+                            vals['recurrency'] = False
                         # Populate the nc_calendar_ids field in Odoo
                         nc_calendar_id = all_nc_calendar_ids.filtered(
                             lambda x: x.calendar_url
@@ -1293,8 +1300,10 @@ class Nextcloudcaldav(models.AbstractModel):
                                                     recurrence_vals.update({'alarm_ids': vals['alarm_ids']})
                                                 if vals.get('nextcloud_event_timezone', False):
                                                     recurrence_vals.update({'nextcloud_event_timezone': vals['nextcloud_event_timezone']})
+                                                recurring_events = od_event_id.recurrence_id.calendar_event_ids
                                                 od_event_id.recurrence_id.base_event_id.with_context(
                                                     sync_from_nextcloud=True).write(recurrence_vals)
+                                                all_odoo_event_ids = self.update_recurring_events_in_all_events(od_event_id,recurring_events,all_odoo_event_ids)
                                                 for hash_vals in hash_vals_list:
                                                     self.update_event_hash(
                                                         hash_vals, od_event_id.recurrence_id.calendar_event_ids
@@ -1621,14 +1630,6 @@ class Nextcloudcaldav(models.AbstractModel):
                         )
                         # Update the Odoo event record
                         res = {"nc_uid": vevent.uid.value, 'nc_synced': True}
-                        if event_id.nc_detach:
-                            res.update(
-                                {
-                                    "recurrence_id": False,
-                                    "recurrency": False,
-                                    "nc_detach": False,
-                                }
-                            )
                         if "nc_hash_ids" not in res:
                             res["nc_hash_ids"] = []
                         event_nchash_id = event_id.nc_hash_ids.filtered(
@@ -1681,7 +1682,20 @@ class Nextcloudcaldav(models.AbstractModel):
                                         if event_id.nextcloud_event_timezone != tz:
                                             res['nextcloud_event_timezone'] = tz
                             event_id.recurrence_id.calendar_event_ids.with_context(sync_from_nextcloud=True).write(res)
+                            if event_id.nc_detach:
+                                recurrence_vals = {
+                                        "recurrence_id": False,
+                                        "recurrency": False,
+                                        "nc_detach": False,
+                                    }
+                                event_id.with_context(sync_from_nextcloud=True).write(recurrence_vals)
                         else:
+                            if event_id.nc_detach:
+                                res.update({
+                                        "recurrence_id": False,
+                                        "recurrency": False,
+                                        "nc_detach": False,
+                                    })
                             event_id.with_context(sync_from_nextcloud=True).write(res)
                         # Commit the changes to the database since it is
                         # already been updated in Nextcloud
@@ -2009,3 +2023,11 @@ class Nextcloudcaldav(models.AbstractModel):
                 dt_tz = dt.replace(tzinfo=pytz.utc)
                 dt_conv = dt_tz.astimezone(pytz.timezone(tz))
         return dt_conv
+
+    def update_recurring_events_in_all_events(self,od_event_id,recurring_events,all_odoo_event_ids):
+        for event in recurring_events:
+            if not event.exists():
+                all_odoo_event_ids = all_odoo_event_ids - event
+        for event in od_event_id.recurrence_id.calendar_event_ids:
+            if event not in all_odoo_event_ids:
+                all_odoo_event_ids = all_odoo_event_ids + event

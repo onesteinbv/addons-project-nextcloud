@@ -70,14 +70,16 @@ class CalendarEvent(models.Model):
             if event.recurrence_id:
                 if not event.allday:
                     start = event.start
-                    tz = event.nextcloud_event_timezone or event.event_tz
-                    if tz:
+                    tz = event.nextcloud_event_timezone
+                    if tz and not event.nc_rid:
                         dt_tz = start.replace(tzinfo=pytz.utc)
                         start = dt_tz.astimezone(
                             pytz.timezone(tz))
-                    event.nc_rid = start.strftime("%Y%m%dT%H%M%S")
+                        event.nc_rid = start.strftime("%Y%m%dT%H%M%S")
+                    else:
+                        event.nc_rid = event.nc_rid or False
                 else:
-                    event.nc_rid = event.start.strftime("%Y%m%d")
+                    event.nc_rid = event.nc_rid or event.start.strftime("%Y%m%d")
             else:
                 event.nc_rid = event.nc_rid or False
 
@@ -231,7 +233,8 @@ class CalendarEvent(models.Model):
             "nc_synced",
             "nc_to_delete",
             "recurrence_id",
-            "nc_calendar_select"
+            "nc_calendar_select",
+            "nextcloud_event_timezone"
         ]
         fields_to_update = list(vals.keys())
         detach = False
@@ -239,7 +242,7 @@ class CalendarEvent(models.Model):
             if f not in ex_fields:
                 detach = True
                 break
-        ex_fields.extend(["nc_allday","nextcloud_event_timezone", "event_tz", "write_date","nextcloud_calendar_type"])
+        ex_fields.extend(["nc_allday", "event_tz", "write_date","nextcloud_calendar_type"])
         record_updated = False
         for f in fields_to_update:
             if f not in ex_fields:
