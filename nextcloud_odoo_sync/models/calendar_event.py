@@ -45,6 +45,7 @@ class CalendarEvent(models.Model):
     nc_event_updateable = fields.Boolean("Event Updateable In Nextcloud",compute="_compute_nc_event_updateable")
     nextcloud_event_timezone = fields.Char('Nextcloud Event Timezone')
     nextcloud_calendar_type = fields.Char('Nextcloud Calendar Type')
+    nextcloud_rrule = fields.Char('Nextcloud Rrule')
 
     @api.model
     def default_get(self, fields):
@@ -234,7 +235,8 @@ class CalendarEvent(models.Model):
             "nc_to_delete",
             "recurrence_id",
             "nc_calendar_select",
-            "nextcloud_event_timezone"
+            "nextcloud_event_timezone",
+            "nextcloud_rrule"
         ]
         fields_to_update = list(vals.keys())
         detach = False

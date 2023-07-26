@@ -1139,7 +1139,8 @@ class Nextcloudcaldav(models.AbstractModel):
                             new_nc_calendar_ids = []
                         if nc_calendar_id:
                             new_nc_calendar_ids.append(nc_calendar_id.id)
-
+                        if vals.get('rrule',False):
+                            vals['nextcloud_rrule'] = vals.get('rrule')
                         # clear categ_ids when not present
                         if "categ_ids" not in vals:
                             vals["categ_ids"] = [(6, 0, [])]
@@ -1275,6 +1276,8 @@ class Nextcloudcaldav(models.AbstractModel):
                                                     vals.get('name', False) and od_event_id.name != vals.get('name')) \
                                                     or (
                                                     vals.get('nextcloud_event_timezone', False) and od_event_id.nextcloud_event_timezone != vals.get('nextcloud_event_timezone')
+                                            ) or (
+                                                    vals.get('nextcloud_rrule', False) and od_event_id.nextcloud_rrule != vals.get('nextcloud_rrule')
                                             ):
                                                 (
                                                         od_event_id.recurrence_id.calendar_event_ids - od_event_id.recurrence_id.base_event_id).write(
@@ -1300,6 +1303,11 @@ class Nextcloudcaldav(models.AbstractModel):
                                                     recurrence_vals.update({'alarm_ids': vals['alarm_ids']})
                                                 if vals.get('nextcloud_event_timezone', False):
                                                     recurrence_vals.update({'nextcloud_event_timezone': vals['nextcloud_event_timezone']})
+                                                if vals.get('nextcloud_rrule', False) and od_event_id.nextcloud_rrule != vals.get('nextcloud_rrule'):
+                                                    recurrence_vals.update(
+                                                        {'nextcloud_rrule': vals['nextcloud_rrule']})
+                                                    recurrence_vals.update(
+                                                        {'rrule': vals['nextcloud_rrule']})
                                                 recurring_events = od_event_id.recurrence_id.calendar_event_ids
                                                 od_event_id.recurrence_id.base_event_id.with_context(
                                                     sync_from_nextcloud=True).write(recurrence_vals)
