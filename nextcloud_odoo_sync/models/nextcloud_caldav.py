@@ -844,14 +844,14 @@ class Nextcloudcaldav(models.AbstractModel):
         recurring_event_ids = event_id.recurrence_id.calendar_event_ids
         if exdates and operation == "create":
             # Check for detached events in Odoo
-            detach_ids = recurring_event_ids.filtered(lambda x: x.nc_detach)
+            detach_ids = recurring_event_ids.filtered(lambda x: x.nc_detach and x.nc_rid)
             if detach_ids:
                 detach_exdates = [parse(x.nc_rid) for x in detach_ids]
                 [exdates.append(d) for d in detach_exdates if d not in exdates]
             vals["exdate"] = exdates
         if operation == "delete":
             # Check if all instance of recurring events are for deletion
-            to_delete_ids = recurring_event_ids.filtered(lambda x: x.nc_to_delete)
+            to_delete_ids = recurring_event_ids.filtered(lambda x: x.nc_to_delete and x.nc_rid)
             if not to_delete_ids or len(to_delete_ids.ids) == len(
                     event_id.recurrence_id.calendar_event_ids.ids
             ):
@@ -864,12 +864,12 @@ class Nextcloudcaldav(models.AbstractModel):
         # then create a new caldav_event that is detached from recurring rule
         if operation == "write" or event_id.nc_detach:
             [vals.pop(x, False) for x in ["rrule", "uid", "exdate"] if x in vals]
-            exdate = parse(event_id.nc_rid)
-            if exdate not in exdates:
+            exdate = parse(event_id.nc_rid) if event_id.nc_rid else False
+            if exdate and exdate not in exdates:
                 exdates.append(exdate)
-                event_id.recurrence_id.nc_exdate = [
-                    x.strftime(date_format) for x in exdates
-                ]
+            event_id.recurrence_id.nc_exdate = [
+                x.strftime(date_format) for x in exdates
+            ]
             operation = "create"
         # Set the exdates value in the caldav_event
         if exdates and caldav_event:
@@ -1265,58 +1265,28 @@ class Nextcloudcaldav(models.AbstractModel):
                                 if "rrule" in vals and "nc_rid" not in vals:
                                     if od_event_id.exists():
                                         if od_event_id.recurrence_id.base_event_id == od_event_id:
-                                            if od_event_id.start != vals.get('start',False) or od_event_id.stop != vals.get('stop',False) or \
-                                                    od_event_id.start_date != vals.get('start_date',False) or od_event_id.stop_date != vals.get('stop_date',False) or (
-                                                    vals.get('location', False) and od_event_id.location != vals.get(
-                                                'location')) \
-                                                    or (vals.get('description',
-                                                                 False) and od_event_id.description != vals.get(
-                                                'description')) \
-                                                    or (
-                                                    vals.get('name', False) and od_event_id.name != vals.get('name')) \
-                                                    or (
-                                                    vals.get('nextcloud_event_timezone', False) and od_event_id.nextcloud_event_timezone != vals.get('nextcloud_event_timezone')
-                                            ) or (
-                                                    vals.get('nextcloud_rrule', False) and od_event_id.nextcloud_rrule != vals.get('nextcloud_rrule')
-                                            ):
-                                                (
-                                                        od_event_id.recurrence_id.calendar_event_ids - od_event_id.recurrence_id.base_event_id).write(
-                                                    {'nc_uid': False})
-                                                recurrence_vals = {'recurrence_update': 'all_events'}
-                                                if vals.get('start', False):
-                                                    recurrence_vals.update({'start': vals['start']})
-                                                if vals.get('stop', False):
-                                                    recurrence_vals.update({'stop': vals['stop']})
-                                                if vals.get('start_date', False):
-                                                    recurrence_vals.update({'start_date': vals['start_date']})
-                                                if vals.get('stop_date', False):
-                                                    recurrence_vals.update({'stop_date': vals['stop_date']})
-                                                if vals.get('name', False):
-                                                    recurrence_vals.update({'name': vals['name']})
-                                                if vals.get('location', False):
-                                                    recurrence_vals.update({'location': vals['location']})
-                                                if vals.get('partner_ids', False):
-                                                    recurrence_vals.update({'partner_ids': vals['partner_ids']})
-                                                if vals.get('categ_ids', False):
-                                                    recurrence_vals.update({'categ_ids': vals['categ_ids']})
-                                                if vals.get('alarm_ids', False):
-                                                    recurrence_vals.update({'alarm_ids': vals['alarm_ids']})
-                                                if vals.get('nextcloud_event_timezone', False):
-                                                    recurrence_vals.update({'nextcloud_event_timezone': vals['nextcloud_event_timezone']})
-                                                if vals.get('nextcloud_rrule', False) and od_event_id.nextcloud_rrule != vals.get('nextcloud_rrule'):
-                                                    recurrence_vals.update(
-                                                        {'nextcloud_rrule': vals['nextcloud_rrule']})
-                                                    recurrence_vals.update(
-                                                        {'rrule': vals['nextcloud_rrule']})
-                                                recurrence_vals.update(self.env['calendar.recurrence']._rrule_parse(vals['nextcloud_rrule'], vals.get('start',od_event_id.start)))
-                                                recurring_events = od_event_id.recurrence_id.calendar_event_ids
-                                                od_event_id.recurrence_id.base_event_id.with_context(
-                                                    sync_from_nextcloud=True).write(recurrence_vals)
-                                                all_odoo_event_ids = self.update_recurring_events_in_all_events(od_event_id,recurring_events,all_odoo_event_ids)
-                                                for hash_vals in hash_vals_list:
-                                                    self.update_event_hash(
-                                                        hash_vals, od_event_id.recurrence_id.calendar_event_ids
-                                                    )
+                                            recurrence_vals = vals
+                                            (od_event_id.recurrence_id.calendar_event_ids - od_event_id.recurrence_id.base_event_id).write(
+                                                {'nc_uid': False})
+                                            recurrence_vals.update({'recurrence_update': 'all_events'})
+                                            if vals.get('nextcloud_rrule', False) and od_event_id.nextcloud_rrule != vals.get('nextcloud_rrule'):
+                                                recurrence_vals.update(
+                                                    {'nextcloud_rrule': vals['nextcloud_rrule']})
+                                                recurrence_vals.update(
+                                                    {'rrule': vals['nextcloud_rrule']})
+                                                recurrence_vals.update(self.env['calendar.recurrence']._rrule_parse(
+                                                    vals['nextcloud_rrule'], vals.get('start', od_event_id.start)))
+                                            else:
+                                                recurrence_vals.pop('rrule',None)
+                                                recurrence_vals.pop('nextcloud_rrule',None)
+                                            recurring_events = od_event_id.recurrence_id.calendar_event_ids
+                                            od_event_id.recurrence_id.base_event_id.with_context(
+                                                sync_from_nextcloud=True).write(recurrence_vals)
+                                            all_odoo_event_ids = self.update_recurring_events_in_all_events(od_event_id,recurring_events,all_odoo_event_ids)
+                                            for hash_vals in hash_vals_list:
+                                                self.update_event_hash(
+                                                    hash_vals, od_event_id.recurrence_id.calendar_event_ids
+                                                )
                                         for hash_vals in hash_vals_list:
                                             self.update_event_hash(hash_vals, od_event_id)
                                     all_odoo_event_ids = self.delete_exempted_event(
