@@ -1308,6 +1308,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                                         {'nextcloud_rrule': vals['nextcloud_rrule']})
                                                     recurrence_vals.update(
                                                         {'rrule': vals['nextcloud_rrule']})
+                                                recurrence_vals.update(self.env['calendar.recurrence']._rrule_parse(vals['nextcloud_rrule'], vals.get('start',od_event_id.start)))
                                                 recurring_events = od_event_id.recurrence_id.calendar_event_ids
                                                 od_event_id.recurrence_id.base_event_id.with_context(
                                                     sync_from_nextcloud=True).write(recurrence_vals)
