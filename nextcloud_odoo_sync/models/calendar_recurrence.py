@@ -27,12 +27,13 @@ class CalendarRecurrence(models.Model):
 
     def _get_rrule(self, dtstart=None):
         self.ensure_one()
+        freq = self.rrule_type
         if self._context.get('sync_from_nextcloud',False):
-            if self.until:
+            if self.until and freq in ('yearly','monthly','weekly'):
                 self.until = self.until - timedelta(days=1)
         if not self.base_event_id.nc_calendar_id or self.end_type != 'forever':
             return super()._get_rrule(dtstart)
-        freq = self.rrule_type
+
         rrule_params = dict(
             dtstart=dtstart,
             interval=self.interval,
