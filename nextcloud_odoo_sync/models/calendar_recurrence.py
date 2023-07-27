@@ -25,15 +25,16 @@ class CalendarRecurrence(models.Model):
 
     nc_exdate = fields.Char("Nextcloud Exdate")
 
+
+
     def _get_rrule(self, dtstart=None):
         self.ensure_one()
-        freq = self.rrule_type
-        if self._context.get('sync_from_nextcloud',False):
-            if self.until and freq in ('yearly','monthly','weekly'):
+        if self._context.get('update_until', False):
+            if self.until:
                 self.until = self.until - timedelta(days=1)
         if not self.base_event_id.nc_calendar_id or self.end_type != 'forever':
             return super()._get_rrule(dtstart)
-
+        freq = self.rrule_type
         rrule_params = dict(
             dtstart=dtstart,
             interval=self.interval,
@@ -57,7 +58,7 @@ class CalendarRecurrence(models.Model):
                 "nextcloud_odoo_sync.weekly_recurring_events_limit")
                                                    ) * 52
             rrule_params['count'] = ((
-                                                 weekly_recurring_events_limit_value // self.interval) if self.interval < weekly_recurring_events_limit_value else 1) * len(
+                                             weekly_recurring_events_limit_value // self.interval) if self.interval < weekly_recurring_events_limit_value else 1) * len(
                 weekdays)  # maximum recurring events for 2 years
         elif freq == 'daily':
             daily_recurring_events_limit_value = (2
@@ -68,7 +69,7 @@ class CalendarRecurrence(models.Model):
                                                   ) * 365
             rrule_params['count'] = (
                     daily_recurring_events_limit_value // self.interval) if self.interval < daily_recurring_events_limit_value else 1  # maximum recurring events for 2 years
-        if freq in ('yearly','monthly'):
+        if freq in ('yearly', 'monthly'):
             yearly_recurring_events_limit_value = (10
                                                    if not config.get_param(
                 "nextcloud_odoo_sync.yearly_recurring_events_limit")
