@@ -1315,7 +1315,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                     for hash_vals in hash_vals_list:
                                         nc_hash_ids.append((0, 0, hash_vals))
                                     vals["nc_hash_ids"] = nc_hash_ids
-                                    new_event_id = calendar_event.with_context(sync_from_nextcloud=True,update_until=True).create(vals)
+                                    new_event_id = calendar_event.with_context(sync_from_nextcloud=True).create(vals)
                                     if (
                                             new_event_id.recurrence_id
                                             and new_event_id.recurrence_id.calendar_event_ids
@@ -1371,20 +1371,42 @@ class Nextcloudcaldav(models.AbstractModel):
                                             recurrence_vals.update({'recurrence_update': 'all_events'})
                                             recurring_events = od_event_id.recurrence_id.calendar_event_ids
                                             context_dict = {'sync_from_nextcloud':True}
-                                            if vals.get('nextcloud_rrule', False) and od_event_id.nextcloud_rrule != vals.get('nextcloud_rrule'):
+                                            if (vals.get('nextcloud_rrule',
+                                                         False) and od_event_id.nextcloud_rrule != vals.get(
+                                                    'nextcloud_rrule')) or (
+                                                    vals.get('start', False) and od_event_id.start != vals.get(
+                                                    'start')) or (
+                                                    vals.get('stop', False) and od_event_id.stop != vals.get('stop')):
                                                 recurrence_vals.update(
                                                     {'nextcloud_rrule': vals['nextcloud_rrule']})
                                                 recurrence_vals.update(
                                                     {'rrule': vals['nextcloud_rrule']})
                                                 recurrence_vals.update(self.env['calendar.recurrence']._rrule_parse(
                                                     vals['nextcloud_rrule'], vals.get('start', od_event_id.start)))
-                                                context_dict.update({'update_until':True})
+                                                if (vals.get('nextcloud_rrule',
+                                                         False) and od_event_id.nextcloud_rrule != vals.get(
+                                                    'nextcloud_rrule')) and 'until' in vals['nextcloud_rrule'].lower():
+                                                    context_dict.update({'update_until':True})
+                                                context_dict.update({'update_nc_rid':True})
                                             else:
                                                 recurrence_vals.pop('rrule',None)
                                                 recurrence_vals.pop('nextcloud_rrule',None)
                                             od_event_id.recurrence_id.base_event_id.with_context(context_dict).write(
                                                 recurrence_vals)
                                             all_odoo_event_ids = self.update_recurring_events_in_all_events(od_event_id,recurring_events,all_odoo_event_ids)
+                                            if context_dict.get('update_nc_rid'):
+                                                if not od_event_id.allday:
+                                                    start = od_event_id.start
+                                                    tz = od_event_id.nextcloud_event_timezone
+                                                    if tz:
+                                                        dt_tz = start.replace(tzinfo=pytz.utc)
+                                                        start = dt_tz.astimezone(
+                                                            pytz.timezone(tz))
+                                                        od_event_id.nc_rid = start.strftime("%Y%m%dT%H%M%S")
+                                                    else:
+                                                        od_event_id.nc_rid = od_event_id.nc_rid
+                                                else:
+                                                    od_event_id.nc_rid = event.start.strftime("%Y%m%d")
                                             for hash_vals in hash_vals_list:
                                                 self.update_event_hash(
                                                     hash_vals, od_event_id.recurrence_id.calendar_event_ids
@@ -2112,3 +2134,4 @@ class Nextcloudcaldav(models.AbstractModel):
         for event in od_event_id.recurrence_id.calendar_event_ids:
             if event not in all_odoo_event_ids:
                 all_odoo_event_ids = all_odoo_event_ids + event
+        return all_odoo_event_ids
