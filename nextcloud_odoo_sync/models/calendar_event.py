@@ -245,6 +245,7 @@ class CalendarEvent(models.Model):
                 detach = True
                 break
         ex_fields.extend(["nc_allday", "event_tz", "write_date","nextcloud_calendar_type"])
+        ex_fields.remove('nc_to_delete')
         record_updated = False
         for f in fields_to_update:
             if f not in ex_fields:

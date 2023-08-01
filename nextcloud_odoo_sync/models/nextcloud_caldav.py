@@ -1066,7 +1066,7 @@ class Nextcloudcaldav(models.AbstractModel):
         already deleted in Nextcloud
         :param event_id: single recordset of calendar.event model
         :param exdates: dictionary of event UID and EXDATE value from Nextcloud
-        :param all_odoo_event_ids: multiple recordset of alendar.event model
+        :param all_odoo_event_ids: multiple recordset of calendar.event model
         :return recordset: returns a new list of all_odoo_event_ids
                             where delete events were removed
         """
@@ -1096,6 +1096,7 @@ class Nextcloudcaldav(models.AbstractModel):
         all_odoo_event_type_ids = params.get("all_odoo_event_type_ids", False)
         status_vals = params.get("status_vals", False)
         calendar_event = self.env["calendar.event"].sudo()
+        calendar_recurrence_obj = self.env["calendar.recurrence"].sudo()
         field_mapping = self.get_caldav_fields()
         date_fields = ['dtstart', 'dtend', 'rrule', 'recurrence-id', 'last-modified']
         log_obj = params["log_obj"]
@@ -1315,7 +1316,11 @@ class Nextcloudcaldav(models.AbstractModel):
                                     for hash_vals in hash_vals_list:
                                         nc_hash_ids.append((0, 0, hash_vals))
                                     vals["nc_hash_ids"] = nc_hash_ids
-                                    new_event_id = calendar_event.with_context(sync_from_nextcloud=True).create(vals)
+                                    context_dict = {'sync_from_nextcloud':True}
+                                    if caldav_event.icalendar_component.get('RELATED-TO'):
+                                        if 'until' in vals.get('nextcloud_rrule','').lower():
+                                            context_dict.update({'update_until': True})
+                                    new_event_id = calendar_event.with_context(context_dict).create(vals)
                                     if (
                                             new_event_id.recurrence_id
                                             and new_event_id.recurrence_id.calendar_event_ids
@@ -1381,7 +1386,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                                     {'nextcloud_rrule': vals['nextcloud_rrule']})
                                                 recurrence_vals.update(
                                                     {'rrule': vals['nextcloud_rrule']})
-                                                recurrence_vals.update(self.env['calendar.recurrence']._rrule_parse(
+                                                recurrence_vals.update(calendar_recurrence_obj._rrule_parse(
                                                     vals['nextcloud_rrule'], vals.get('start', od_event_id.start)))
                                                 if (vals.get('nextcloud_rrule',
                                                          False) and od_event_id.nextcloud_rrule != vals.get(
@@ -1393,7 +1398,20 @@ class Nextcloudcaldav(models.AbstractModel):
                                                 recurrence_vals.pop('nextcloud_rrule',None)
                                             od_event_id.recurrence_id.base_event_id.with_context(context_dict).write(
                                                 recurrence_vals)
-                                            all_odoo_event_ids = self.update_recurring_events_in_all_events(od_event_id,recurring_events,all_odoo_event_ids)
+                                            new_recurring_events = od_event_id.recurrence_id.calendar_event_ids
+                                            if not od_event_id.active:
+                                                new_recurrence = calendar_recurrence_obj.search([('base_event_id','=',od_event_id.id)],limit=1)
+                                                if new_recurrence:
+                                                    new_recurring_events = new_recurrence.calendar_event_ids.sorted(
+                                                        key=lambda r: r.id
+                                                    )
+                                                    if new_recurring_events:
+                                                        all_odoo_event_ids = all_odoo_event_ids - od_event_id
+                                                        recurring_events = recurring_events - od_event_id
+                                                        od_event_id.with_context(force_delete=True).unlink()
+                                                        new_recurrence.base_event_id = new_recurring_events[0].id
+                                                        od_event_id = new_recurring_events[0]
+                                            all_odoo_event_ids = self.update_recurring_events_in_all_events(new_recurring_events,recurring_events,all_odoo_event_ids)
                                             if context_dict.get('update_nc_rid'):
                                                 if not od_event_id.allday:
                                                     start = od_event_id.start
@@ -1406,10 +1424,10 @@ class Nextcloudcaldav(models.AbstractModel):
                                                     else:
                                                         od_event_id.nc_rid = od_event_id.nc_rid
                                                 else:
-                                                    od_event_id.nc_rid = event.start.strftime("%Y%m%d")
+                                                    od_event_id.nc_rid = od_event_id.start.strftime("%Y%m%d")
                                             for hash_vals in hash_vals_list:
                                                 self.update_event_hash(
-                                                    hash_vals, od_event_id.recurrence_id.calendar_event_ids
+                                                    hash_vals, new_recurring_events
                                                 )
                                         for hash_vals in hash_vals_list:
                                             self.update_event_hash(hash_vals, od_event_id)
@@ -1456,7 +1474,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                 params["write_count"] += 1
                             except Exception as e:
                                 message = (
-                                        "Error updating Odoo event '%s' for user '%s':\n"
+                                            "Error updating Odoo event '%s' for user '%s':\n"
                                         % (event_name, user_name)
                                 )
                                 log_obj.log_event(
@@ -2127,11 +2145,11 @@ class Nextcloudcaldav(models.AbstractModel):
                 dt_conv = dt_tz.astimezone(pytz.timezone(tz))
         return dt_conv
 
-    def update_recurring_events_in_all_events(self,od_event_id,recurring_events,all_odoo_event_ids):
+    def update_recurring_events_in_all_events(self,new_recurring_events,recurring_events,all_odoo_event_ids):
         for event in recurring_events:
             if not event.exists():
                 all_odoo_event_ids = all_odoo_event_ids - event
-        for event in od_event_id.recurrence_id.calendar_event_ids:
+        for event in new_recurring_events:
             if event not in all_odoo_event_ids:
                 all_odoo_event_ids = all_odoo_event_ids + event
         return all_odoo_event_ids
