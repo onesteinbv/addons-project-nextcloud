@@ -236,14 +236,18 @@ class CalendarEvent(models.Model):
             "recurrence_id",
             "nc_calendar_select",
             "nextcloud_event_timezone",
-            "nextcloud_rrule"
+            "nextcloud_rrule",
         ]
         fields_to_update = list(vals.keys())
         detach = False
-        for f in fields_to_update:
-            if f not in ex_fields:
-                detach = True
-                break
+        if not self._context.get('update_recurring', False):
+            if not vals.get('recurrence_update','') in ['future_events','all_events']:
+                for f in fields_to_update:
+                    if f not in ex_fields:
+                        detach = True
+                        break
+            else:
+                self = self.with_context(update_recurring=True)
         ex_fields.extend(["nc_allday", "event_tz", "write_date","nextcloud_calendar_type"])
         ex_fields.remove('nc_to_delete')
         record_updated = False
@@ -295,7 +299,6 @@ class CalendarEvent(models.Model):
             has_nc_uids = self.filtered(lambda r: r.nc_uid and r.nc_calendar_id == default_calendar_id)
             if has_nc_uids:
                 has_nc_uids.write({"nc_to_delete": True})
-        self = self - has_nc_uids
         for record in self:
             if record.recurrence_id:
                 nc_exdates = (
@@ -303,11 +306,10 @@ class CalendarEvent(models.Model):
                     if record.recurrence_id.nc_exdate
                     else []
                 )
-                start_date = record.start.strftime("%Y%m%dT%H%M%S")
-                if record.allday:
-                    start_date = record.start_date.strftime("%Y%m%d")
-                nc_exdates.append(start_date)
-                record.recurrence_id.write({"nc_exdate": nc_exdates})
+                if record.nc_rid:
+                    nc_exdates.append(record.nc_rid)
+                    record.recurrence_id.write({"nc_exdate": nc_exdates})
+        self = self - has_nc_uids
         return super(CalendarEvent, self).unlink()
 
 

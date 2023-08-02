@@ -170,12 +170,13 @@ class NcSyncUser(models.Model):
             nc_calendar_ids = self.nc_calendar_ids
         res = super(NcSyncUser, self).write(vals)
         if vals.get('nc_calendar_ids'):
-            for rec in nc_calendar_ids:
-                if rec not in rec.nc_calendar_ids and rec != rec.nc_calendar_id:
-                    calendar_event_obj.search(
-                        [("partner_ids", "in", rec.user_id.partner_id.id), ('nc_uid', '!=', False)]).filtered(
-                        lambda x: len(x.nc_calendar_ids) == 1 and rec in x.nc_calendar_ids).with_context(
-                        force_delete=True).unlink()
+            for record in self:
+                for rec in nc_calendar_ids:
+                    if rec not in record.nc_calendar_ids and rec != record.nc_calendar_id:
+                        calendar_event_obj.search(
+                            [("partner_ids", "in", record.user_id.partner_id.id), ('nc_uid', '!=', False)]).filtered(
+                            lambda x: len(x.nc_calendar_ids) == 1 and rec in x.nc_calendar_ids).with_context(
+                            force_delete=True).unlink()
         return res
 
     def unlink(self):
