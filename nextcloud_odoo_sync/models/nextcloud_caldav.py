@@ -983,7 +983,10 @@ class Nextcloudcaldav(models.AbstractModel):
                         dt_tz = value
                     exdates[index] = dt_tz.date() if event_id.allday else dt_tz
             exdates = list(set(exdates))
-            caldav_event.icalendar_component.add("exdate", exdates,parameters={"VALUE":"DATE" if event_id.allday else "DATE-TIME"},)
+            parameters = {"VALUE": "DATE" if event_id.allday else "DATE-TIME"}
+            if not event_id.allday:
+                parameters.update({"TZID": event_id.nextcloud_event_timezone or event_id.event_tz or 'UTC'})
+            caldav_event.icalendar_component.add("exdate", exdates,parameters=parameters)
             caldav_event.save()
         return event_id, operation, vals
 
