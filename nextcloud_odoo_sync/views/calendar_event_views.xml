@@ -83,6 +83,5 @@
 	<!-- Add domain filter to exclude events to be deleted in Nextcloud and Odoo -->
 	<record id="calendar.action_calendar_event" model="ir.actions.act_window">
 		<field name="domain">[('nc_to_delete', '=', False)]</field>
-		<field name="context">{}</field>
 	</record>
 </odoo>

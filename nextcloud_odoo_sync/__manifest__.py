@@ -34,4 +34,5 @@
     "active": False,
     "auto_install": False,
     "application": True,
+    "uninstall_hook": "uninstall_hook",
 }
