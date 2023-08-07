@@ -185,26 +185,13 @@ class NcSyncUser(models.Model):
         :return add changes into this predefined functions
         """
         calendar_event_obj = self.env["calendar.event"]
-        sync_user_ids = self.search([]).mapped("user_id")
+        calendar_event_hash_obj = self.env["calendar.event.nchash"]
         for record in self.filtered(lambda x: x.user_id):
+            calendar_event_hash_obj.search([('nc_sync_user_id','=',record.id)]).unlink()
             calendar_ids = calendar_event_obj.search(
                 [("user_id", "=", record.user_id.id)]
             )
-            for calendar in calendar_ids:
-                # Check if the calendar event is shared with another
-                # Odoo user with an active Nextcloud calendar sync
-                if len(calendar.nc_hash_ids.ids) > 1:
-                    hash_ids = calendar.nc_hash_ids.filtered(
-                        lambda x: x.user_id == record.user_id
-                                  or (sync_user_ids and x.user_id not in sync_user_ids)
-                    )
-                    hash_ids.unlink()
-                    if not calendar.nc_hash_ids:
-                        calendar.write({"nc_uid": False, "nc_synced": False})
-                # Otherwise, remove both the nc_uid and hash_ids
-                else:
-                    calendar.write({"nc_uid": False, "nc_synced": False})
-                    calendar.nc_hash_ids.unlink()
+            calendar_ids.filtered(lambda x:not x.nc_hash_ids).write({"nc_uid": False, "nc_synced": False})
             # Remove all Nextcloud calendar records
             record.user_id.nc_calendar_ids.unlink()
         return super(NcSyncUser, self).unlink()
@@ -285,6 +272,8 @@ class NcSyncUser(models.Model):
         connection_dict = self.sudo().get_user_connection()
         principal = connection_dict.get("principal", False)
         self.get_user_calendars(principal)
+        if not self.nc_calendar_id and self.user_id.nc_calendar_ids:
+            self.nc_calendar_id = self.user_id.nc_calendar_ids[0]
         target = "new" if self._context.get("pop_up") else "main"
         res = {
             "name": "NextCloud User Setup",
@@ -406,6 +395,21 @@ class NcSyncUser(models.Model):
                             "event_hash": event_hash[0] if event_hash else False,
                         }
                     )
+                    if event.recurrence_id and event.recurrence_id.base_event_id not in od_event_ids:
+                            event_hash = False
+                            base_event = event.recurrence_id.base_event_id
+                            if base_event.nc_hash_ids:
+                                event_hash = base_event.nc_hash_ids.filtered(
+                                    lambda x: x.nc_sync_user_id == user
+                                ).mapped("nc_event_hash")
+                            result["od_events"].append(
+                                {
+                                    "nc_uid": base_event.nc_uid,
+                                    "od_event": base_event,
+                                    "event_hash": event_hash[0] if event_hash else False,
+                                }
+                            )
+
                 # Get all Nextcloud events of the user
                 nc_calendar_obj = self.env["nc.calendar"]
                 for calendar in principal.calendars():

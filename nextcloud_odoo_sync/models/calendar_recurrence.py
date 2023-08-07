@@ -45,6 +45,7 @@ class CalendarRecurrence(models.Model):
 
     def _get_rrule(self, dtstart=None):
         self.ensure_one()
+
         if self._context.get('update_until', False):
             if self.until:
                 self.until = self.until - timedelta(days=1)
@@ -73,8 +74,8 @@ class CalendarRecurrence(models.Model):
             weekly_recurring_events_limit_value = (2
                                                    if not config.get_param(
                 "nextcloud_odoo_sync.weekly_recurring_events_limit")
-                                                   else config.get_param(
-                "nextcloud_odoo_sync.weekly_recurring_events_limit")
+                                                   else int(config.get_param(
+                "nextcloud_odoo_sync.weekly_recurring_events_limit"))
                                                    ) * 52
             if past_event:
                 weekly_recurring_events_limit_value += weeks_between(dtstart_date,today)
@@ -86,9 +87,9 @@ class CalendarRecurrence(models.Model):
             daily_recurring_events_limit_value = (2
                                                   if not config.get_param(
                 "nextcloud_odoo_sync.daily_recurring_events_limit")
-                                                  else config.get_param(
+                                                  else int(config.get_param(
                 "nextcloud_odoo_sync.daily_recurring_events_limit")
-                                                  ) * 365
+                                                  )) * 365
             if past_event:
                 daily_recurring_events_limit_value += days_between(dtstart_date,today)
             rrule_params['count'] = (
@@ -97,15 +98,15 @@ class CalendarRecurrence(models.Model):
             yearly_recurring_events_limit_value = (10
                                                    if not config.get_param(
                 "nextcloud_odoo_sync.yearly_recurring_events_limit")
-                                                   else config.get_param(
+                                                   else int(config.get_param(
                 "nextcloud_odoo_sync.yearly_recurring_events_limit")
-                                                   )
+                                                   ))
             monthly_recurring_events_limit_value = (2
                                                     if not config.get_param(
                 "nextcloud_odoo_sync.monthly_recurring_events_limit")
-                                                    else config.get_param(
+                                                    else int(config.get_param(
                 "nextcloud_odoo_sync.monthly_recurring_events_limit")
-                                                    ) * 12
+                                                    )) * 12
             if freq == 'yearly':
                 if past_event:
                     yearly_recurring_events_limit_value += years_between(dtstart_date, today)
