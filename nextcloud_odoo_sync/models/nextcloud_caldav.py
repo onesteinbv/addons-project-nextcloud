@@ -1576,7 +1576,7 @@ class Nextcloudcaldav(models.AbstractModel):
                             }
                             vals[field_mapping[field]] = start_stop[field]
                         else:
-                            user_tz = sync_user_id.user_id.tz
+                            user_tz = event_id.nextcloud_event_timezone or sync_user_id.user_id.tz
                             vals[field_mapping[field]] = self.convert_date(
                                 value, user_tz, "local"
                             )
@@ -1607,6 +1607,8 @@ class Nextcloudcaldav(models.AbstractModel):
                         if value not in recurrent_rule_ids[operation]:
                             recurrent_rule_ids[operation].append(value)
                             rrule = self.get_rrule_dict(value._rrule_serialize())
+                            if rrule.get('UNTIL'):
+                                rrule.update({'UNTIL':parse(rrule.get('UNTIL'))})
                             vals[field_mapping[field]] = rrule
                     else:
                         vals[field_mapping[field]] = value
