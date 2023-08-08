@@ -1811,6 +1811,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                 )
 
                         if event_id.recurrence_id:
+                            hash_updated = False
                             if event_id.recurrence_id.base_event_id == event_id:
                                 if caldav_event.icalendar_component.get(
                                         'DTSTART') and caldav_event.icalendar_component.get('RRULE'):
@@ -1832,7 +1833,11 @@ class Nextcloudcaldav(models.AbstractModel):
                                     },
                                 )]})
                                 event_id.recurrence_id.calendar_event_ids.filtered(lambda x:not x.nc_uid).write({"nc_uid": vevent.uid.value})
-                            event_vals = {"nc_uid": vevent.uid.value,"nc_hash_ids":res['nc_hash_ids']}
+                                hash_updated = True
+                            if not hash_updated:
+                                event_vals = {"nc_uid": vevent.uid.value,"nc_hash_ids":res['nc_hash_ids']}
+                            else:
+                                event_vals = {}
                             if event_id.nc_detach:
                                 event_vals.update({
                                         "recurrence_id": False,
@@ -1873,7 +1878,7 @@ class Nextcloudcaldav(models.AbstractModel):
                         # TODO: Handle deletion of specific instance of a
                         # recurring event where nc_uid are the same
                         all_events_with_nc_uid = params["all_odoo_event_ids"].filtered(
-                            lambda x: x.nc_uid == event_id.nc_uid and x.active
+                            lambda x: x.nc_uid == event_id.nc_uid
                         )
                         to_delete_event_ids = all_events_with_nc_uid.filtered(
                             lambda x: x.nc_to_delete
@@ -1912,7 +1917,7 @@ class Nextcloudcaldav(models.AbstractModel):
         sync_start = datetime.now()
         result = self.env["nc.sync.log"].log_event("pre_sync")
         log_obj = result["log_id"]
-        calendar_event_obj = self.env["calendar.event"].with_context(active_test=False)
+        calendar_event_obj = self.env["calendar.event"]
         # To minimize impact on performance, search only once rather than
         # searching each loop
         params = {

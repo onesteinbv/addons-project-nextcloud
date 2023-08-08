@@ -42,7 +42,7 @@ class CalendarEvent(models.Model):
     nc_to_delete = fields.Boolean("To Delete")
     nc_allday = fields.Boolean("Nextcloud All day")
     nc_detach = fields.Boolean("Detach from recurring event")
-    nc_event_updateable = fields.Boolean("Event Updateable In Nextcloud",compute="_compute_nc_event_updateable")
+    nc_event_updateable = fields.Boolean("Event Updateable In Nextcloud", compute="_compute_nc_event_updateable")
     nextcloud_event_timezone = fields.Char('Nextcloud Event Timezone')
     nextcloud_calendar_type = fields.Char('Nextcloud Calendar Type')
     nextcloud_rrule = fields.Char('Nextcloud Rrule')
@@ -61,7 +61,7 @@ class CalendarEvent(models.Model):
         ).id
         return res
 
-    @api.depends("recurrence_id","allday","start","event_tz","nextcloud_event_timezone")
+    @api.depends("recurrence_id", "allday", "start", "event_tz", "nextcloud_event_timezone")
     def _compute_nc_rid(self):
         """
         This method generates a value for RECURRENCE-ID
@@ -101,7 +101,7 @@ class CalendarEvent(models.Model):
             event.nc_calendar_id = calendar
             event.nc_calendar_select = str(calendar) if calendar else False
 
-    @api.depends('nc_calendar_id','nextcloud_calendar_type')
+    @api.depends('nc_calendar_id', 'nextcloud_calendar_type')
     def _compute_nc_event_updateable(self):
         for event in self:
             nc_event_updateable = True
@@ -110,7 +110,7 @@ class CalendarEvent(models.Model):
             elif event.nc_calendar_id:
                 default_calendar_id = (
                     self.env["nc.sync.user"]
-                    .search([("user_id", "=", self.env.user.id),("sync_calendar", "=", True)], limit=1)
+                    .search([("user_id", "=", self.env.user.id), ("sync_calendar", "=", True)], limit=1)
                     .mapped("nc_calendar_id")
                 )
                 if event.nc_calendar_id != default_calendar_id:
@@ -140,7 +140,7 @@ class CalendarEvent(models.Model):
             if self.nc_require_calendar:
                 default_calendar_id = (
                     self.env["nc.sync.user"]
-                    .search([("user_id", "=", self.user_id.id),("sync_calendar", "=", True)], limit=1)
+                    .search([("user_id", "=", self.user_id.id), ("sync_calendar", "=", True)], limit=1)
                     .mapped("nc_calendar_id")
                 )
                 if default_calendar_id and self.user_id == self.env.user:
@@ -167,7 +167,7 @@ class CalendarEvent(models.Model):
             elif not self.nc_calendar_select and self.user_id:
                 calendar_id = (
                     self.env["nc.sync.user"]
-                    .search([("user_id", "=", self.user_id.id),("sync_calendar", "=", True)], limit=1)
+                    .search([("user_id", "=", self.user_id.id), ("sync_calendar", "=", True)], limit=1)
                     .mapped("nc_calendar_id")
                 )
             else:
@@ -209,7 +209,7 @@ class CalendarEvent(models.Model):
         if vals.get('user_id'):
             # Check if a value for calendar exist for the user:
             nc_sync_user_id = self.env["nc.sync.user"].search(
-                [("user_id", "=", vals["user_id"]),("sync_calendar", "=", True)], limit=1
+                [("user_id", "=", vals["user_id"]), ("sync_calendar", "=", True)], limit=1
             )
             if "nc_calendar_ids" not in vals or vals["nc_calendar_ids"] == [[6, False, []]]:
                 if nc_sync_user_id and nc_sync_user_id.nc_calendar_id:
@@ -239,23 +239,29 @@ class CalendarEvent(models.Model):
             "nextcloud_rrule",
         ]
         fields_to_update = list(vals.keys())
+        calendar_recurrence_obj = self.env["calendar.recurrence"].sudo()
         detach = False
         if not self._context.get('update_recurring', False):
-            if not vals.get('recurrence_update','') in ['future_events','all_events']:
+            if not vals.get('recurrence_update', '') in ['future_events', 'all_events']:
                 for f in fields_to_update:
                     if f not in ex_fields:
                         detach = True
                         break
             else:
                 self = self.with_context(update_recurring=True)
-        ex_fields.extend(["nc_allday", "event_tz", "write_date","nextcloud_calendar_type"])
+        ex_fields.extend(["nc_allday", "event_tz", "write_date", "nextcloud_calendar_type"])
         ex_fields.remove('nc_to_delete')
         record_updated = False
         for f in fields_to_update:
             if f not in ex_fields:
                 record_updated = True
                 break
-        if not self._context.get("sync", False) and "nc_synced" not in vals and record_updated:
+        if not self._context.get("sync",
+                                 False) and "nc_synced" not in vals and record_updated and not self._context.get(
+            'update_recurring', False):
+            vals["nc_synced"] = False
+        if self._context.get('update_recurring', False) and len(self.ids) == 1 and self.ids == [
+            self.recurrence_id.base_event_id.id]:
             vals["nc_synced"] = False
         for record in self:
             # Detach the record from recurring event whenever an edit was made
@@ -269,11 +275,27 @@ class CalendarEvent(models.Model):
                     raise UserError(_('You cannot update nextcloud events for Birthday calendars'))
                 default_calendar_id = (
                     self.env["nc.sync.user"]
-                    .search([("user_id", "=", self.env.user.id),("sync_calendar", "=", True)], limit=1)
+                    .search([("user_id", "=", self.env.user.id), ("sync_calendar", "=", True)], limit=1)
                     .mapped("nc_calendar_id")
                 )
                 raise UserError(_('You cannot update nextcloud events for calendars other than default one(%s)',
                                   default_calendar_id.name))
+            if not self._context.get('sync_from_nextcloud'):
+                if 'active' in vals and not vals.get('active'):
+                    new_recurrence = calendar_recurrence_obj.search([('base_event_id', '=', record.id)],
+                                                                    limit=1)
+                    if new_recurrence:
+                        new_recurring_events = new_recurrence.calendar_event_ids.sorted(
+                            key=lambda r: r.start
+                        )
+                        if new_recurring_events:
+                            new_recurrence.base_event_id = new_recurring_events[0].id
+                            hash_vals_list = []
+                            for rec in record.nc_hash_ids:
+                                hash_vals_list.append((0, 0, {"nc_sync_user_id": rec.nc_sync_user_id.id,
+                                                              "nc_event_hash": rec.nc_event_hash, }))
+                            new_recurring_events.write({'nc_hash_ids': hash_vals_list, 'nc_synced': True})
+                            new_recurring_events[0].write({"nc_synced": False})
             if record.recurrence_id:
                 if detach:
                     vals.update({"nc_detach": True})
@@ -293,7 +315,7 @@ class CalendarEvent(models.Model):
                     raise UserError(_('You cannot delete nextcloud events if you are not the organizer'))
             default_calendar_id = (
                 self.env["nc.sync.user"]
-                .search([("user_id", "=", self.env.user.id),("sync_calendar", "=", True)], limit=1)
+                .search([("user_id", "=", self.env.user.id), ("sync_calendar", "=", True)], limit=1)
                 .mapped("nc_calendar_id")
             )
             has_nc_uids = self.filtered(lambda r: r.nc_uid and r.nc_calendar_id == default_calendar_id)
