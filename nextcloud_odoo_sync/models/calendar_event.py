@@ -263,6 +263,20 @@ class CalendarEvent(models.Model):
         if self._context.get('update_recurring', False) and len(self.ids) == 1 and self.ids == [
             self.recurrence_id.base_event_id.id]:
             vals["nc_synced"] = False
+            if not self._context.get('update_nc_rid', False):
+                if not self.allday:
+                    start = self.start
+                    tz = self.nextcloud_event_timezone
+                    if tz:
+                        dt_tz = start.replace(tzinfo=pytz.utc)
+                        start = dt_tz.astimezone(
+                            pytz.timezone(tz))
+                        nc_rid = start.strftime("%Y%m%dT%H%M%S")
+                    else:
+                        nc_rid = self.nc_rid
+                else:
+                    nc_rid = self.start.strftime("%Y%m%d")
+                vals["nc_rid"] = nc_rid
         for record in self:
             # Detach the record from recurring event whenever an edit was made
             # to make it compatible when synced to Nextcloud calendar

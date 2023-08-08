@@ -957,7 +957,6 @@ class Nextcloudcaldav(models.AbstractModel):
             ):
                 return event_id, operation, vals
             else:
-                operation = 'null'
                 exdates.extend([parse(x.nc_rid) for x in to_delete_ids if x.nc_rid not in exdates])
 
         # Handle write operation by marking the existing caldav_event with exdate
