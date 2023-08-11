@@ -279,7 +279,8 @@ class CalendarEvent(models.Model):
                 vals["nc_rid"] = nc_rid
         if vals.get('recurrence_update') == 'future_events':
             for record in self:
-                record.recurrence_id.base_event_id.write({'nc_synced': False, 'nc_uid': False, 'nc_hash_ids': [(6,0,[])]})
+                record.recurrence_id.base_event_id.sudo().write(
+                    {'nc_synced': False, 'nc_uid': False, 'nc_hash_ids': [(6, 0, [])]})
         for record in self:
             # Detach the record from recurring event whenever an edit was made
             # to make it compatible when synced to Nextcloud calendar
