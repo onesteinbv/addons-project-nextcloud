@@ -196,7 +196,13 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                     nc_events_dict["write"].append(ode)
                                                             else:
                                                                 if nce not in od_events_dict["write"]:
-                                                                    od_events_dict["write"].append(nce)
+                                                                    if od_event.nc_rid and "exdates" in nce["nc_event"][
+                                                                        0] and od_event.nc_rid in nce["nc_event"][0][
+                                                                        'exdates']:
+                                                                        if ode not in od_events_dict["delete"]:
+                                                                            od_events_dict["delete"].append(ode)
+                                                                    else:
+                                                                        od_events_dict["write"].append(nce)
                                                         else:
                                                             if ode not in nc_events_dict["write"] and not od_event.nc_synced:
                                                                 nc_events_dict["write"].append(ode)
@@ -246,7 +252,14 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                 )
                                                                 if nc_last_modified > od_event.recurrence_id.write_date:
                                                                     if nce not in od_events_dict["write"]:
-                                                                        od_events_dict["write"].append(nce)
+                                                                        if od_event.nc_rid and "exdates" in \
+                                                                                nce["nc_event"][
+                                                                                    0] and od_event.nc_rid in \
+                                                                                nce["nc_event"][0]['exdates']:
+                                                                            if ode not in od_events_dict["delete"]:
+                                                                                od_events_dict["delete"].append(ode)
+                                                                        else:
+                                                                            od_events_dict["write"].append(nce)
                                                                 else:
                                                                     if ode not in nc_events_dict[
                                                                         "write"] and not od_event.nc_synced:
@@ -348,7 +361,11 @@ class Nextcloudcaldav(models.AbstractModel):
                                                                 nc_events_dict["write"].append(ode)
                                                         else:
                                                             if nce not in od_events_dict["write"]:
-                                                                od_events_dict["write"].append(nce)
+                                                                if od_event.nc_rid and "exdates" in nce["nc_event"][0] and od_event.nc_rid in nce["nc_event"][0]['exdates']:
+                                                                    if ode not in od_events_dict["delete"]:
+                                                                        od_events_dict["delete"].append(ode)
+                                                                else:
+                                                                    od_events_dict["write"].append(nce)
                                                     else:
                                                         if ode not in nc_events_dict["write"] and not od_event.nc_synced:
                                                             nc_events_dict["write"].append(ode)
@@ -396,7 +413,13 @@ class Nextcloudcaldav(models.AbstractModel):
                                                             )
                                                             if nc_last_modified > od_event.recurrence_id.write_date:
                                                                 if nce not in od_events_dict["write"]:
-                                                                    od_events_dict["write"].append(nce)
+                                                                    if od_event.nc_rid and "exdates" in nce["nc_event"][
+                                                                        0] and od_event.nc_rid in nce["nc_event"][0][
+                                                                        'exdates']:
+                                                                        if ode not in od_events_dict["delete"]:
+                                                                            od_events_dict["delete"].append(ode)
+                                                                    else:
+                                                                        od_events_dict["write"].append(nce)
                                                             else:
                                                                 if ode not in nc_events_dict[
                                                                     "write"] and not od_event.nc_synced:
@@ -488,7 +511,12 @@ class Nextcloudcaldav(models.AbstractModel):
                                                             nc_events_dict["write"].append(ode)
                                                     else:
                                                         if nce not in od_events_dict["write"]:
-                                                            od_events_dict["write"].append(nce)
+                                                            if od_event.nc_rid and "exdates" in nce["nc_event"][
+                                                                0] and od_event.nc_rid in nce["nc_event"][0]['exdates']:
+                                                                if ode not in od_events_dict["delete"]:
+                                                                    od_events_dict["delete"].append(ode)
+                                                            else:
+                                                                od_events_dict["write"].append(nce)
                                                 else:
                                                     if ode not in nc_events_dict["write"] and not od_event.nc_synced:
                                                         nc_events_dict["write"].append(ode)
@@ -538,7 +566,13 @@ class Nextcloudcaldav(models.AbstractModel):
                                                         )
                                                         if nc_last_modified > od_event.recurrence_id.write_date:
                                                             if nce not in od_events_dict["write"]:
-                                                                od_events_dict["write"].append(nce)
+                                                                if od_event.nc_rid and "exdates" in nce["nc_event"][
+                                                                    0] and od_event.nc_rid in nce["nc_event"][0][
+                                                                    'exdates']:
+                                                                    if ode not in od_events_dict["delete"]:
+                                                                        od_events_dict["delete"].append(ode)
+                                                                else:
+                                                                    od_events_dict["write"].append(nce)
                                                         else:
                                                             if ode not in nc_events_dict[
                                                                 "write"] and not od_event.nc_synced:
@@ -673,7 +707,7 @@ class Nextcloudcaldav(models.AbstractModel):
                             data = value
                             if key_field[0] in date_fields:
                                 data = self.get_event_datetime(
-                                    key_field, value, nc_event, ode["od_event"]
+                                    key_field, value, nc_event, ode["od_event"], nce["nc_caldav"]
                                 )
 
                             allday = ode["od_event"].allday
@@ -1423,7 +1457,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                                     new_recurrence = calendar_recurrence_obj.search([('base_event_id','=',od_event_id.id)],limit=1)
                                                     if new_recurrence:
                                                         new_recurring_events = new_recurrence.calendar_event_ids.sorted(
-                                                            key=lambda r: r.id
+                                                            key=lambda r: r.start
                                                         )
                                                         if new_recurring_events:
                                                             all_odoo_event_ids = all_odoo_event_ids - od_event_id
@@ -1552,7 +1586,7 @@ class Nextcloudcaldav(models.AbstractModel):
                             # sorting it by record id
                             event_ids = (
                                 event_id.recurrence_id.calendar_event_ids.sorted(
-                                    key=lambda r: r.id
+                                    key=lambda r: r.start
                                 )
                             )
                             event_id = calendar_event_obj.browse(event_ids.ids[0])
@@ -1813,7 +1847,7 @@ class Nextcloudcaldav(models.AbstractModel):
 
                         if event_id.recurrence_id:
                             hash_updated = False
-                            if event_id.recurrence_id.base_event_id == event_id:
+                            if not event_id.nc_detach and event_id.recurrence_id.base_event_id == event_id:
                                 if caldav_event.icalendar_component.get(
                                         'DTSTART') and caldav_event.icalendar_component.get('RRULE'):
                                     event_start_date = caldav_event.icalendar_component.get('DTSTART').dt
@@ -1840,6 +1874,12 @@ class Nextcloudcaldav(models.AbstractModel):
                             else:
                                 event_vals = {}
                             if event_id.nc_detach:
+                                if event_id.recurrence_id and event_id.recurrence_id.base_event_id == event_id:
+                                    new_base_event = (event_id.recurrence_id.calendar_event_ids - event_id).sorted(
+                                        key=lambda r: r.start
+                                    )
+                                    if new_base_event:
+                                        event_id.recurrence_id.base_event_id = new_base_event[0].id
                                 event_vals.update({
                                         "recurrence_id": False,
                                         "recurrency": False,
@@ -1849,6 +1889,12 @@ class Nextcloudcaldav(models.AbstractModel):
                         else:
                             res.update({"nc_uid": vevent.uid.value})
                             if event_id.nc_detach:
+                                if event_id.recurrence_id and event_id.recurrence_id.base_event_id == event_id:
+                                    new_base_event = (event_id.recurrence_id.calendar_event_ids - event_id).sorted(
+                                        key=lambda r: r.start
+                                    )
+                                    if new_base_event:
+                                        event_id.recurrence_id.base_event_id = new_base_event[0].id
                                 res.update({
                                         "recurrence_id": False,
                                         "recurrency": False,
