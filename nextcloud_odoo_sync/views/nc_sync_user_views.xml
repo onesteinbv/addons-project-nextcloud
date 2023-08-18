@@ -6,6 +6,7 @@
 			<tree string="Nextcloud Sync User Tree">
 				<field name="user_id"/>
 				<field name="user_name"/>
+				<field name="nextcloud_url"/>
 				<field name="sync_calendar"/>
 			</tree>
 		</field>
@@ -35,18 +36,27 @@
 							<field name="user_has_calendar" invisible="1"/>
 							<field name="user_name"/>
 							<field name="nc_calendar_id" widget="selection" domain="[('user_id', '=', user_id)]"
-								attrs="{'required': [('user_has_calendar', '=', True)], 'invisible':[('user_has_calendar', '=', False)]}"/>
-							<field name="nc_email" attrs="{'invisible':[('user_has_calendar','=',False)]}" readonly="1"/>
+								attrs="{'required': [('user_has_calendar', '=', True),('nc_email','!=',False)], 'invisible':['|',('user_has_calendar', '=', False),('nc_email','=',False)]}"/>
+							<field name="nc_calendar_ids" widget="many2many_tags" domain="[('user_id', '=', user_id),('id','!=',nc_calendar_id)]"
+								attrs="{'invisible':['|',('user_has_calendar', '=', False),('nc_email','=',False)]}" options="{'no_create': True, 'no_create_edit':True}"/>
+							<field name="nc_email" attrs="{'invisible':[('user_has_calendar','=',False)]}" readonly="1" force_save="1"/>
 						</group>
 						<group>
 							<field name="nc_password" password="True"/>
-							<field name="sync_calendar" attrs="{'invisible':[('nc_calendar_id','=',False)]}"/>
+							<field name="start_date" attrs="{'required': [('user_has_calendar', '=', True)], 'invisible':[('user_has_calendar', '=', False)]}"/>
+							<field name="nextcloud_url"/>
+							<field name="sync_calendar" attrs="{'invisible':['|',('nc_calendar_id','=',False),('nc_email','=',False)]}"/>
 							<field name="nextcloud_user_id" invisible="1"/>
 						</group>
 					</group>
 					<div class="alert alert-info" role="alert" attrs="{'invisible': [('nc_calendar_id', '=', False)]}">
 					  	<span>
 					  		<field name="user_message" readonly="1" force_save="1"/>
+					  	</span>
+					</div>
+					<div class="alert alert-info" role="alert" attrs="{'invisible': ['|',('nc_email', '!=', False),('user_has_calendar','=',False)]}">
+					  	<span>
+					  		Make sure you use the correct username to login. The Email field should be populated with your email
 					  	</span>
 					</div>
 				</sheet>
@@ -71,18 +81,11 @@
 
 	<menuitem name="Nextcloud Sync" id="menu_main_nextcloud"
 		groups="nextcloud_odoo_sync.group_nextcloud_sync_admin"
-		sequence="1" web_icon="nextcloud_odoo_sync,static/description/icon.png"/>
+		sequence="100" web_icon="nextcloud_odoo_sync,static/description/icon.png"/>
 
 	<menuitem
 		id="menu_main_nextcloud_config"
 		name="Configuration"
 		parent="menu_main_nextcloud"
 		sequence="50"/>
-
-	<menuitem
-		id="menu_main_nextcloud_sync_user"
-		name="User Setup"
-		parent="menu_main_nextcloud_config"
-		sequence="1"
-		action="nc_sync_user_action"/>
 </odoo>

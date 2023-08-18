@@ -67,7 +67,9 @@ class Nextcloudcaldav(models.AbstractModel):
         """
         od_events_dict = {"create": [], "write": [], "delete": []}
         nc_events_dict = {"create": [], "write": [], "delete": []}
-
+        nc_events_create = []
+        all_odoo_events = self.env['calendar.event'].search([])
+        recurrence_id_key = 'RECURRENCE-ID'
         # Compare Odoo events to sync
         if od_events and nc_events:
             # Odoo -> Nextcloud
@@ -92,20 +94,41 @@ class Nextcloudcaldav(models.AbstractModel):
                     if not od_event.nc_status_id:
                         od_event.nc_status_id = nc_event_status_confirmed_id.id
                     if (
-                        od_event.nc_status_id
-                        and od_event.nc_status_id.name.lower() != "canceled"
+                            od_event.nc_status_id
+                            and od_event.nc_status_id.name.lower() != "canceled"
                     ):
                         duplicate = self.check_duplicate(nc_events, ode)
                         if not duplicate:
-                            nc_events_dict["create"].append(ode)
+                            if od_event.recurrence_id:
+                                base_event = od_event.recurrence_id.base_event_id
+                                if not base_event.nc_uid and base_event not in nc_events_create:
+                                    base_event_vals = {
+                                        "nc_uid": base_event.nc_uid,
+                                        "od_event": base_event,
+                                        "event_hash": False,
+                                    }
+                                    if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                        nc_events_dict["create"].append(base_event_vals)
+                                        nc_events_create.append(base_event)
+                                    continue
+                            else:
+                                if od_event not in nc_events_create:
+                                    if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                        nc_events_dict["create"].append(ode)
+                                        nc_events_create.append(od_event)
+                                    continue
                         else:
-                            od_event.nc_uid = duplicate["nc_uid"]
-                            ode["nc_uid"] = duplicate["nc_uid"]
-                            duplicate["od_event"] = od_event
-                            od_events_dict["write"].append(duplicate)
+                            if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                od_event.nc_uid = duplicate["nc_uid"]
+                                ode["nc_uid"] = duplicate["nc_uid"]
+                                duplicate["od_event"] = od_event
+                                od_events_dict["write"].append(duplicate)
+                            continue
                 if ode["nc_uid"] and ode["event_hash"]:
                     valid_nc_uid = False
                     for nextcloud_event in nc_events:
+                        if valid_nc_uid:
+                            break
                         nce = nextcloud_event.copy()
                         if ode["nc_uid"] == nce["nc_uid"]:
                             valid_nc_uid = True
@@ -120,44 +143,200 @@ class Nextcloudcaldav(models.AbstractModel):
                                 # sync (nc_synced=True) then no change to
                                 # update to Nextcloud
                                 if od_event.nc_synced:
-                                    break
-                                else:
-                                    if (
-                                        od_event.nc_status_id
-                                        and od_event.nc_status_id.name.lower()
-                                        != "canceled"
-                                    ):
-                                        # Case 2.b: If there are changes to
-                                        # sync (nc_synced=False) and to delete
-                                        # (nc_to_delete=True), delete Nextcloud
-                                        # event
+                                    vevent = ode["nc_caldav"].vobject_instance.vevent
+                                    if not od_event.nextcloud_calendar_type:
                                         if (
-                                            not od_event.nc_synced
-                                            and od_event.nc_to_delete
+                                                "status" not in vevent.contents
+                                                or vevent.status.value.lower() == "cancelled"
                                         ):
-                                            nc_events_dict["delete"].append(ode)
-                                        # Case 2.c: If there are changes to
-                                        # sync (nc_sycned=False) but not to
-                                        # delete (nc_to_delete=False), update
-                                        # Nextcloud event
+                                            if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                                if nce not in od_events_dict["delete"]:
+                                                    od_events_dict["delete"].append(nce)
+                                    if (
+                                            od_event.nc_to_delete
+                                    ):
+                                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                            if ode not in nc_events_dict["delete"]:
+                                                nc_events_dict["delete"].append(ode)
+                                else:
+                                    if not od_event.nextcloud_calendar_type:
+                                        if (
+                                                od_event.nc_status_id
+                                                and od_event.nc_status_id.name.lower()
+                                                != "canceled"
+                                        ):
+                                            # Case 2.b: If there are changes to
+                                            # sync (nc_synced=False) and to delete
+                                            # (nc_to_delete=True), delete Nextcloud
+                                            # event
+                                            if (
+                                                    od_event.nc_to_delete
+                                            ):
+                                                if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                                    if ode not in nc_events_dict["delete"]:
+                                                        nc_events_dict["delete"].append(ode)
+                                            # Case 2.c: If there are changes to
+                                            # sync (nc_sycned=False) but not to
+                                            # delete (nc_to_delete=False), update
+                                            # Nextcloud event
+                                            else:
+                                                if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                                    if not od_event.recurrence_id:
+                                                        if "LAST-MODIFIED" in nce["nc_event"][0]:
+                                                            # The "Z" stands for Zulu time
+                                                            # (zero hours ahead of GMT) which
+                                                            # is another name for UTC
+                                                            nc_last_modified = datetime.strptime(
+                                                                nce["nc_event"][0]["LAST-MODIFIED"],
+                                                                "%Y%m%dT%H%M%SZ",
+                                                            )
+                                                            od_last_modified = od_event.write_date
+                                                            if od_last_modified > nc_last_modified:
+                                                                if ode not in nc_events_dict["write"] and not od_event.nc_synced:
+                                                                    nc_events_dict["write"].append(ode)
+                                                            else:
+                                                                if nce not in od_events_dict["write"]:
+                                                                    if od_event.nc_rid and "exdates" in nce["nc_event"][
+                                                                        0] and od_event.nc_rid in nce["nc_event"][0][
+                                                                        'exdates']:
+                                                                        if ode not in od_events_dict["delete"]:
+                                                                            od_events_dict["delete"].append(ode)
+                                                                    else:
+                                                                        od_events_dict["write"].append(nce)
+                                                        else:
+                                                            if ode not in nc_events_dict["write"] and not od_event.nc_synced:
+                                                                nc_events_dict["write"].append(ode)
+                                                        if od_event.nc_rid:
+                                                            od_event_nc_rid = od_event.nc_rid
+                                                            nc_modified = False
+                                                            for nce_events_dict in nce["nc_event"]:
+                                                                matching_values = [
+                                                                    value for key, value in nce_events_dict.items()
+                                                                    if recurrence_id_key in key
+                                                                ]
+                                                                if matching_values:
+                                                                    if od_event_nc_rid == matching_values[
+                                                                        0] and "LAST-MODIFIED" in nce_events_dict:
+                                                                        nc_last_modified = datetime.strptime(
+                                                                            nce_events_dict["LAST-MODIFIED"],
+                                                                            "%Y%m%dT%H%M%SZ",
+                                                                        )
+                                                                        od_last_modified = od_event.write_date
+                                                                        if od_last_modified > nc_last_modified:
+                                                                            if ode not in nc_events_dict[
+                                                                                "write"] and not od_event.nc_synced:
+                                                                                nc_events_dict["write"].append(ode)
+                                                                        else:
+                                                                            if nce not in od_events_dict["write"]:
+                                                                                recurring_nce = nce.copy()
+                                                                                recurring_nce.update(
+                                                                                    {'nc_event': [nce_events_dict],
+                                                                                     'detach': True})
+                                                                                od_events_dict["write"].append(
+                                                                                    recurring_nce)
+                                                                        nc_modified = True
+                                                                        break
+                                                            if not nc_modified:
+                                                                if ode not in nc_events_dict[
+                                                                    "write"] and not od_event.nc_synced:
+                                                                    nc_events_dict["write"].append(ode)
+                                                    else:
+                                                        if od_event == od_event.recurrence_id.base_event_id:
+                                                            if "LAST-MODIFIED" in nce["nc_event"][0]:
+                                                                # The "Z" stands for Zulu time
+                                                                # (zero hours ahead of GMT) which
+                                                                # is another name for UTC
+                                                                nc_last_modified = datetime.strptime(
+                                                                    nce["nc_event"][0]["LAST-MODIFIED"],
+                                                                    "%Y%m%dT%H%M%SZ",
+                                                                )
+                                                                if nc_last_modified > od_event.recurrence_id.write_date:
+                                                                    if nce not in od_events_dict["write"]:
+                                                                        if od_event.nc_rid and "exdates" in \
+                                                                                nce["nc_event"][
+                                                                                    0] and od_event.nc_rid in \
+                                                                                nce["nc_event"][0]['exdates']:
+                                                                            if ode not in od_events_dict["delete"]:
+                                                                                od_events_dict["delete"].append(ode)
+                                                                        else:
+                                                                            od_events_dict["write"].append(nce)
+                                                                else:
+                                                                    if ode not in nc_events_dict[
+                                                                        "write"] and not od_event.nc_synced:
+                                                                        nc_events_dict["write"].append(ode)
+                                                            else:
+                                                                if ode not in nc_events_dict[
+                                                                    "write"] and not od_event.nc_synced:
+                                                                    nc_events_dict["write"].append(ode)
+                                                        if od_event.nc_rid:
+                                                            od_event_nc_rid = od_event.nc_rid
+                                                            nc_modified = False
+                                                            for nce_events_dict in nce["nc_event"]:
+                                                                matching_values = [
+                                                                    value for key, value in nce_events_dict.items()
+                                                                    if recurrence_id_key in key
+                                                                ]
+                                                                if matching_values:
+                                                                    if od_event_nc_rid == matching_values[
+                                                                        0] and "LAST-MODIFIED" in nce_events_dict:
+                                                                        nc_last_modified = datetime.strptime(
+                                                                            nce_events_dict["LAST-MODIFIED"],
+                                                                            "%Y%m%dT%H%M%SZ",
+                                                                        )
+                                                                        nc_modified = True
+                                                                        od_last_modified = od_event.write_date
+                                                                        if od_last_modified > nc_last_modified:
+                                                                            if ode not in nc_events_dict[
+                                                                                "write"] and not od_event.nc_synced:
+                                                                                nc_events_dict["write"].append(ode)
+                                                                        else:
+                                                                            if nce not in od_events_dict["write"]:
+                                                                                recurring_nce = nce.copy()
+                                                                                recurring_nce.update(
+                                                                                    {'nc_event': [nce_events_dict],'detach':True})
+                                                                                od_events_dict["write"].append(
+                                                                                    recurring_nce)
+                                                                        break
+                                                            if not nc_modified:
+                                                                if ode not in nc_events_dict[
+                                                                    "write"] and not od_event.nc_synced:
+                                                                    nc_events_dict["write"].append(ode)
                                         else:
-                                            if sync_user_id.user_id == od_event.user_id:
-                                                nc_events_dict["write"].append(ode)
+                                            if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                                if ode not in nc_events_dict["delete"]:
+                                                    nc_events_dict["delete"].append(ode)
                                     else:
-                                        nc_events_dict["delete"].append(ode)
+                                        if (
+                                                od_event.nc_to_delete
+                                        ):
+                                            if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                                if ode not in nc_events_dict["delete"]:
+                                                    nc_events_dict["delete"].append(ode)
                             # Case 3: If both hash differs
                             else:
+                                if od_event.nextcloud_calendar_type:
+                                    if (
+                                            od_event.nc_to_delete
+                                    ):
+                                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                            if ode not in nc_events_dict["delete"]:
+                                                nc_events_dict["delete"].append(ode)
+                                    elif nce not in od_events_dict["write"]:
+                                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                            od_events_dict["write"].append(nce)
+                                    continue
                                 # Case 3.a: If Odoo event has no change
                                 # (nc_synced=True) update based on Nextcloud
                                 if od_event.nc_synced:
                                     # delete if cancelled
                                     vevent = ode["nc_caldav"].vobject_instance.vevent
                                     if (
-                                        "status" not in vevent.contents
-                                        or vevent.status.value.lower() == "cancelled"
+                                            "status" not in vevent.contents
+                                            or vevent.status.value.lower() == "cancelled"
                                     ):
-                                        if sync_user_id.user_id == od_event.user_id:
-                                            od_events_dict["delete"].append(nce)
+                                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                            if nce not in od_events_dict["delete"]:
+                                                od_events_dict["delete"].append(nce)
                                     else:
                                         if nce not in od_events_dict["write"]:
                                             # in nextcloud an attendee can
@@ -166,8 +345,121 @@ class Nextcloudcaldav(models.AbstractModel):
                                             # hence we retrict modification to
                                             # odoo event by the attendee as
                                             # well
-                                            if sync_user_id.user_id == od_event.user_id:
-                                                od_events_dict["write"].append(nce)
+                                            if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                                if not od_event.recurrence_id:
+                                                    if "LAST-MODIFIED" in nce["nc_event"][0]:
+                                                        # The "Z" stands for Zulu time
+                                                        # (zero hours ahead of GMT) which
+                                                        # is another name for UTC
+                                                        nc_last_modified = datetime.strptime(
+                                                            nce["nc_event"][0]["LAST-MODIFIED"],
+                                                            "%Y%m%dT%H%M%SZ",
+                                                        )
+                                                        od_last_modified = od_event.write_date
+                                                        if od_last_modified > nc_last_modified:
+                                                            if ode not in nc_events_dict["write"] and not od_event.nc_synced:
+                                                                nc_events_dict["write"].append(ode)
+                                                        else:
+                                                            if nce not in od_events_dict["write"]:
+                                                                if od_event.nc_rid and "exdates" in nce["nc_event"][0] and od_event.nc_rid in nce["nc_event"][0]['exdates']:
+                                                                    if ode not in od_events_dict["delete"]:
+                                                                        od_events_dict["delete"].append(ode)
+                                                                else:
+                                                                    od_events_dict["write"].append(nce)
+                                                    else:
+                                                        if ode not in nc_events_dict["write"] and not od_event.nc_synced:
+                                                            nc_events_dict["write"].append(ode)
+                                                    if od_event.nc_rid:
+                                                        od_event_nc_rid = od_event.nc_rid
+                                                        nc_modified = False
+                                                        for nce_events_dict in nce["nc_event"]:
+                                                            matching_values = [
+                                                                value for key, value in nce_events_dict.items()
+                                                                if recurrence_id_key in key
+                                                            ]
+                                                            if matching_values:
+                                                                if od_event_nc_rid == matching_values[
+                                                                    0] and "LAST-MODIFIED" in nce_events_dict:
+                                                                    nc_last_modified = datetime.strptime(
+                                                                        nce_events_dict["LAST-MODIFIED"],
+                                                                        "%Y%m%dT%H%M%SZ",
+                                                                    )
+                                                                    od_last_modified = od_event.write_date
+                                                                    if od_last_modified > nc_last_modified:
+                                                                        if ode not in nc_events_dict["write"] and not od_event.nc_synced:
+                                                                            nc_events_dict["write"].append(ode)
+                                                                    else:
+                                                                        if nce not in od_events_dict["write"]:
+                                                                            recurring_nce = nce.copy()
+                                                                            recurring_nce.update(
+                                                                                {'nc_event': [nce_events_dict],'detach':True})
+                                                                            od_events_dict["write"].append(
+                                                                                recurring_nce)
+                                                                    nc_modified = True
+                                                                    break
+                                                        if not nc_modified:
+                                                            if ode not in nc_events_dict[
+                                                                "write"] and not od_event.nc_synced:
+                                                                nc_events_dict["write"].append(ode)
+                                                else:
+                                                    if od_event == od_event.recurrence_id.base_event_id:
+                                                        if "LAST-MODIFIED" in nce["nc_event"][0]:
+                                                            # The "Z" stands for Zulu time
+                                                            # (zero hours ahead of GMT) which
+                                                            # is another name for UTC
+                                                            nc_last_modified = datetime.strptime(
+                                                                nce["nc_event"][0]["LAST-MODIFIED"],
+                                                                "%Y%m%dT%H%M%SZ",
+                                                            )
+                                                            if nc_last_modified > od_event.recurrence_id.write_date:
+                                                                if nce not in od_events_dict["write"]:
+                                                                    if od_event.nc_rid and "exdates" in nce["nc_event"][
+                                                                        0] and od_event.nc_rid in nce["nc_event"][0][
+                                                                        'exdates']:
+                                                                        if ode not in od_events_dict["delete"]:
+                                                                            od_events_dict["delete"].append(ode)
+                                                                    else:
+                                                                        od_events_dict["write"].append(nce)
+                                                            else:
+                                                                if ode not in nc_events_dict[
+                                                                    "write"] and not od_event.nc_synced:
+                                                                    nc_events_dict["write"].append(ode)
+                                                        else:
+                                                            if ode not in nc_events_dict[
+                                                                "write"] and not od_event.nc_synced:
+                                                                nc_events_dict["write"].append(ode)
+                                                    if od_event.nc_rid:
+                                                        od_event_nc_rid = od_event.nc_rid
+                                                        nc_modified = False
+                                                        for nce_events_dict in nce["nc_event"]:
+                                                            matching_values = [
+                                                                value for key, value in nce_events_dict.items()
+                                                                if recurrence_id_key in key
+                                                            ]
+                                                            if matching_values:
+                                                                if od_event_nc_rid == matching_values[
+                                                                    0] and "LAST-MODIFIED" in nce_events_dict:
+                                                                    nc_last_modified = datetime.strptime(
+                                                                        nce_events_dict["LAST-MODIFIED"],
+                                                                        "%Y%m%dT%H%M%SZ",
+                                                                    )
+                                                                    od_last_modified = od_event.write_date
+                                                                    if od_last_modified > nc_last_modified:
+                                                                        if ode not in nc_events_dict["write"] and not od_event.nc_synced:
+                                                                            nc_events_dict["write"].append(ode)
+                                                                    else:
+                                                                        if nce not in od_events_dict["write"]:
+                                                                            recurring_nce = nce.copy()
+                                                                            recurring_nce.update(
+                                                                                {'nc_event': [nce_events_dict],'detach':True})
+                                                                            od_events_dict["write"].append(
+                                                                                recurring_nce)
+                                                                    nc_modified = True
+                                                                    break
+                                                        if not nc_modified:
+                                                            if ode not in nc_events_dict[
+                                                                "write"] and not od_event.nc_synced:
+                                                                nc_events_dict["write"].append(ode)
                                             else:
                                                 # revert the event of attendee
                                                 # in nextcloud to event of
@@ -180,13 +472,13 @@ class Nextcloudcaldav(models.AbstractModel):
                                                 # attendee in nextcloud
                                                 log_obj.log_event(
                                                     message="A Nextcloud event"
-                                                    " has been modified by one"
-                                                    " of its attendee in Nextcloud"
-                                                    " but does not get"
-                                                    " reflected in the organizer"
-                                                    " event. This changes will be"
-                                                    " ignored in Odoo. Event details:"
-                                                    "\n%s" % nce["nc_event"][0]
+                                                            " has been modified by one"
+                                                            " of its attendee in Nextcloud"
+                                                            " but does not get"
+                                                            " reflected in the organizer"
+                                                            " event. This changes will be"
+                                                            " ignored in Odoo. Event details:"
+                                                            "\n%s" % nce["nc_event"][0]
                                                 )
                                 else:
                                     # Case 3.b: If Odoo has changes
@@ -194,47 +486,155 @@ class Nextcloudcaldav(models.AbstractModel):
                                     # (nc_to_delete=True), delete Nextcloud
                                     # event
                                     if not od_event.nc_synced and od_event.nc_to_delete:
-                                        nc_events_dict["delete"].append(ode)
+                                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                            if ode not in nc_events_dict["delete"]:
+                                                nc_events_dict["delete"].append(ode)
                                     # Case 3.c: If Odoo has changes
                                     # (nc_synced=False) and not to delete
                                     # (nc_to_delete=False)
                                     else:
                                         # Check LAST-MODIFIED date value in
                                         # Nextcloud event
-                                        if "LAST-MODIFIED" in nce["nc_event"][0]:
-                                            # The "Z" stands for Zulu time
-                                            # (zero hours ahead of GMT) which
-                                            # is another name for UTC
-                                            nc_last_modified = datetime.strptime(
-                                                nce["nc_event"][0]["LAST-MODIFIED"],
-                                                "%Y%m%dT%H%M%SZ",
-                                            )
-                                            od_last_modified = od_event.write_date
-                                            if od_last_modified > nc_last_modified:
-                                                if (
-                                                    sync_user_id.user_id
-                                                    == od_event.user_id
-                                                ):
-                                                    nc_events_dict["write"].append(ode)
+                                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                                            if not od_event.recurrence_id:
+                                                if "LAST-MODIFIED" in nce["nc_event"][0]:
+                                                    # The "Z" stands for Zulu time
+                                                    # (zero hours ahead of GMT) which
+                                                    # is another name for UTC
+                                                    nc_last_modified = datetime.strptime(
+                                                        nce["nc_event"][0]["LAST-MODIFIED"],
+                                                        "%Y%m%dT%H%M%SZ",
+                                                    )
+                                                    od_last_modified = od_event.write_date
+                                                    if od_last_modified > nc_last_modified:
+                                                        if ode not in nc_events_dict["write"] and not od_event.nc_synced:
+                                                            nc_events_dict["write"].append(ode)
+                                                    else:
+                                                        if nce not in od_events_dict["write"]:
+                                                            if od_event.nc_rid and "exdates" in nce["nc_event"][
+                                                                0] and od_event.nc_rid in nce["nc_event"][0]['exdates']:
+                                                                if ode not in od_events_dict["delete"]:
+                                                                    od_events_dict["delete"].append(ode)
+                                                            else:
+                                                                od_events_dict["write"].append(nce)
+                                                else:
+                                                    if ode not in nc_events_dict["write"] and not od_event.nc_synced:
+                                                        nc_events_dict["write"].append(ode)
+                                                if od_event.nc_rid:
+                                                    od_event_nc_rid = od_event.nc_rid
+                                                    nc_modified = False
+                                                    for nce_events_dict in nce["nc_event"]:
+                                                        matching_values = [
+                                                            value for key, value in nce_events_dict.items()
+                                                            if recurrence_id_key in key
+                                                        ]
+                                                        if matching_values:
+                                                            if od_event_nc_rid == matching_values[
+                                                                0] and "LAST-MODIFIED" in nce_events_dict:
+                                                                nc_last_modified = datetime.strptime(
+                                                                    nce_events_dict["LAST-MODIFIED"],
+                                                                    "%Y%m%dT%H%M%SZ",
+                                                                )
+                                                                od_last_modified = od_event.write_date
+                                                                if od_last_modified > nc_last_modified:
+                                                                    if ode not in nc_events_dict[
+                                                                        "write"] and not od_event.nc_synced:
+                                                                        nc_events_dict["write"].append(ode)
+                                                                else:
+                                                                    if nce not in od_events_dict["write"]:
+                                                                        recurring_nce = nce.copy()
+                                                                        recurring_nce.update(
+                                                                            {'nc_event': [nce_events_dict],
+                                                                             'detach': True})
+                                                                        od_events_dict["write"].append(
+                                                                            recurring_nce)
+                                                                nc_modified = True
+                                                                break
+                                                    if not nc_modified:
+                                                        if ode not in nc_events_dict[
+                                                            "write"] and not od_event.nc_synced:
+                                                            nc_events_dict["write"].append(ode)
                                             else:
-                                                od_events_dict["write"].append(nce)
-
+                                                if od_event == od_event.recurrence_id.base_event_id:
+                                                    if "LAST-MODIFIED" in nce["nc_event"][0]:
+                                                        # The "Z" stands for Zulu time
+                                                        # (zero hours ahead of GMT) which
+                                                        # is another name for UTC
+                                                        nc_last_modified = datetime.strptime(
+                                                            nce["nc_event"][0]["LAST-MODIFIED"],
+                                                            "%Y%m%dT%H%M%SZ",
+                                                        )
+                                                        if nc_last_modified > od_event.recurrence_id.write_date:
+                                                            if nce not in od_events_dict["write"]:
+                                                                if od_event.nc_rid and "exdates" in nce["nc_event"][
+                                                                    0] and od_event.nc_rid in nce["nc_event"][0][
+                                                                    'exdates']:
+                                                                    if ode not in od_events_dict["delete"]:
+                                                                        od_events_dict["delete"].append(ode)
+                                                                else:
+                                                                    od_events_dict["write"].append(nce)
+                                                        else:
+                                                            if ode not in nc_events_dict[
+                                                                "write"] and not od_event.nc_synced:
+                                                                nc_events_dict["write"].append(ode)
+                                                    else:
+                                                        if ode not in nc_events_dict[
+                                                            "write"] and not od_event.nc_synced:
+                                                            nc_events_dict["write"].append(ode)
+                                                if od_event.nc_rid:
+                                                    od_event_nc_rid = od_event.nc_rid
+                                                    nc_modified = False
+                                                    for nce_events_dict in nce["nc_event"]:
+                                                        matching_values = [
+                                                            value for key, value in nce_events_dict.items()
+                                                            if recurrence_id_key in key
+                                                        ]
+                                                        if matching_values:
+                                                            if od_event_nc_rid == matching_values[
+                                                                0] and "LAST-MODIFIED" in nce_events_dict:
+                                                                nc_last_modified = datetime.strptime(
+                                                                    nce_events_dict["LAST-MODIFIED"],
+                                                                    "%Y%m%dT%H%M%SZ",
+                                                                )
+                                                                od_last_modified = od_event.write_date
+                                                                if od_last_modified > nc_last_modified:
+                                                                    if ode not in nc_events_dict["write"] and not od_event.nc_synced:
+                                                                        nc_events_dict["write"].append(ode)
+                                                                else:
+                                                                    if nce not in od_events_dict["write"]:
+                                                                        recurring_nce = nce.copy()
+                                                                        recurring_nce.update(
+                                                                            {'nc_event': [nce_events_dict],'detach':True})
+                                                                        od_events_dict["write"].append(recurring_nce)
+                                                                nc_modified=True
+                                                                break
+                                                    if not nc_modified:
+                                                        if ode not in nc_events_dict[
+                                                            "write"] and not od_event.nc_synced:
+                                                            nc_events_dict["write"].append(ode)
                     # Case 4: If the value of Odoo nc_uid is not found in all
                     # of Nextcloud events, then it was deleted in Nextcloud
                     if not valid_nc_uid:
-                        od_events_dict["delete"].append(ode)
+                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                            if ode not in od_events_dict["delete"]:
+                                od_events_dict["delete"].append(ode)
             # Nextcloud -> Odoo
             for nce in nc_events:
-                valid_nc_uid = False
-                for ode in od_events:
-                    if nce["nc_uid"] == ode["nc_uid"]:
-                        valid_nc_uid = True
-                        break
-                # Case 5: Nextcloud nc_uid is not found in Odoo
-                if not valid_nc_uid and sync_user_id.check_nc_event_organizer(
-                    nce["nc_caldav"]
+                vevent = nce["nc_caldav"].vobject_instance.vevent
+                # ignore if cancelled
+                if (
+                        "status" not in vevent.contents
+                        or vevent.status.value.lower() != "cancelled"
                 ):
-                    od_events_dict["create"].append(nce)
+                    valid_nc_uid = all_odoo_events.filtered(lambda ev: ev.nc_uid == nce["nc_uid"])
+                    # for ode in od_events:
+                    #     if nce["nc_uid"] == ode["nc_uid"]:
+                    #         valid_nc_uid = True
+                    #         break
+                    # Case 5: Nextcloud nc_uid is not found in Odoo
+                    if not valid_nc_uid:
+                        od_events_dict["create"].append(nce)
+
         # Case 6: If there is not a single event in Odoo, we create everything
         # from Nextcloud -> Odoo
         if not od_events and nc_events:
@@ -242,10 +642,11 @@ class Nextcloudcaldav(models.AbstractModel):
                 vevent = nce["nc_caldav"].vobject_instance.vevent
                 # ignore if cancelled
                 if (
-                    "status" not in vevent.contents
-                    or vevent.status.value.lower() != "cancelled"
+                        "status" not in vevent.contents
+                        or vevent.status.value.lower() != "cancelled"
                 ):
-                    if sync_user_id.check_nc_event_organizer(nce["nc_caldav"]):
+                    valid_nc_uid = all_odoo_events.filtered(lambda ev: ev.nc_uid == nce["nc_uid"])
+                    if not valid_nc_uid:
                         od_events_dict["create"].append(nce)
         # Case 7: If there is not a single event in Nextcloud, check if Odoo
         # event has nc_uid value or not
@@ -254,19 +655,34 @@ class Nextcloudcaldav(models.AbstractModel):
                 # ignore if cancelled
                 od_event = ode["od_event"]
                 if (
-                    od_event.nc_status_id
-                    and od_event.nc_status_id.name.lower() != "canceled"
+                        od_event.nc_status_id
+                        and od_event.nc_status_id.name.lower() != "canceled"
                 ):
                     # Case 7.a: If the event has an existing nc_uid value, then
                     # its a previous event in Nextcloud that might have been
                     # deleted
                     if od_event.nc_uid:
-                        if sync_user_id.user_id == od_event.user_id:
+                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
                             od_events_dict["delete"].append(ode)
                     else:
                         # Case 7.b: If the event has no nc_uid value then its a
                         # new event in Odoo to be created in Nextcloud
-                        nc_events_dict["create"].append(ode)
+                        if od_event.user_id and sync_user_id.user_id == od_event.user_id:
+                            if od_event.recurrence_id:
+                                base_event = od_event.recurrence_id.base_event_id
+                                if not base_event.nc_uid and base_event not in nc_events_create:
+                                    base_event_vals = {
+                                        "nc_uid": base_event.nc_uid,
+                                        "od_event": base_event,
+                                        "event_hash": False,
+                                    }
+                                    nc_events_dict["create"].append(base_event_vals)
+                                    nc_events_create.append(base_event)
+                            else:
+                                if od_event not in nc_events_create:
+                                    nc_events_dict["create"].append(ode)
+                                    nc_events_create.append(od_event)
+
         return od_events_dict, nc_events_dict
 
     def check_duplicate(self, nc_events, ode):
@@ -279,6 +695,7 @@ class Nextcloudcaldav(models.AbstractModel):
         result = {}
         fields = {"name": "SUMMARY", "start": "DTSTART", "stop": "DTEND"}
         d = 0
+        date_fields = ['dtstart', 'dtend', 'rrule', 'recurrence-id', 'last-modified']
         for f in fields:
             for nce in nc_events:
                 for nc_event in nce["nc_event"]:
@@ -287,13 +704,16 @@ class Nextcloudcaldav(models.AbstractModel):
                         if field == key or field in key:
                             value = nc_event[key]
                             key_field = key.lower().split(";")
-                            data = self.get_event_datetime(
-                                key_field, value, nc_event, ode["od_event"]
-                            )
+                            data = value
+                            if key_field[0] in date_fields:
+                                data = self.get_event_datetime(
+                                    key_field, value, nc_event, ode["od_event"], nce["nc_caldav"]
+                                )
+
                             allday = ode["od_event"].allday
                             if isinstance(data, datetime) or isinstance(data, dtdate):
                                 if (data == ode["od_event"][f] and not allday) or (
-                                    data == ode["od_event"][f].date() and allday
+                                        data == ode["od_event"][f].date() and allday
                                 ):
                                     d += 1
                             elif data == ode["od_event"][f]:
@@ -318,10 +738,9 @@ class Nextcloudcaldav(models.AbstractModel):
         nc_sync_user_obj = self.env["nc.sync.user"]
         res_partner_obj = self.env["res.partner"]
         res_users_obj = self.env["res.users"]
+        org_user_id = []
         # Get attendees for Odoo event
         if isinstance(calendar_event, caldav.objects.Event):
-            # In Odoo, we add the organizer are part of the meeting attendee
-            attendee_partner_ids = [user_id.partner_id.id]
             try:
                 attendees = [
                     value.value
@@ -332,17 +751,22 @@ class Nextcloudcaldav(models.AbstractModel):
                 ]
             except Exception:
                 attendees = []
+            try:
+                organizer = calendar_event.instance.vevent.organizer.value
+                attendees.append(organizer)
+            except Exception:
+                organizer = ''
             for att in attendees:
                 email = att.split(":")[-1].lower()
                 if email != "false":
                     # Check if an Odoo user has the same email address
                     att_user_id = nc_sync_user_obj.search(
-                        [("nc_email", "=", email)], limit=1
+                        [("nc_email", "=", email), ("sync_calendar", "=", True)], limit=1
                     ).user_id
                     if not att_user_id:
                         att_user_id = all_user_ids.filtered(
                             lambda x: x.partner_id.email
-                            and x.partner_id.email.lower() == email
+                                      and x.partner_id.email.lower() == email
                         )
                     # In case more than 1 user has the same email address,
                     # check which user is in nc.sync.user model
@@ -366,29 +790,44 @@ class Nextcloudcaldav(models.AbstractModel):
                                 att_user_id.partner_id.email = email
                             attendee_partner_ids.append(att_user_id.partner_id.id)
                         else:
-                            contact_id = res_partner_obj.search([('email','=',email)],limit=1)
+                            contact_id = res_partner_obj.search([('email', '=', email)], limit=1)
                             if not contact_id:
                                 contact_id = res_partner_obj.create(
                                     {"name": email, "email": email, "nc_sync": True}
                                 )
                             all_partner_ids |= contact_id
                             attendee_partner_ids.append(contact_id.id)
+            if organizer:
+                organizer_email = organizer.replace(
+                    "mailto:", ""
+                )
+                org_user_id = nc_sync_user_obj.search(
+                    [("nc_email", "=", organizer_email), ("sync_calendar", "=", True)], limit=1
+                ).user_id
+                if not org_user_id:
+                    org_user_id = all_user_ids.filtered(
+                        lambda x: x.partner_id.email
+                                  and x.partner_id.email.lower() == email
+                    )
+            if not attendees:
+                attendee_partner_ids = [user_id.partner_id.id]
+                org_user_id = user_id
         # Get attendees for Nextcloud event
         elif (
-            isinstance(calendar_event, models.Model)
-            and calendar_event.partner_ids
-            and all_sync_user_ids
+                isinstance(calendar_event, models.Model)
+                and calendar_event.partner_ids
+                and all_sync_user_ids
         ):
             nc_user_ids = self.env["nc.sync.user"]
             for partner in calendar_event.partner_ids:
                 # In Nextcloud, we don"t populate the attendee if there is only
                 # the organizer involve
                 if (
-                    partner != user_id.partner_id
-                    and len(calendar_event.partner_ids) > 1
+                        partner != user_id.partner_id
+                        and len(calendar_event.partner_ids) > 1
                 ):
                     nc_user_id = all_sync_user_ids.filtered(
-                        lambda x: x.partner_id.id == partner.id
+                        lambda x: x.partner_id.id == partner.id and x.sync_calendar
                     )
                     try:
                         nc_user_ids |= nc_user_id
@@ -405,10 +844,10 @@ class Nextcloudcaldav(models.AbstractModel):
                         if partner.email:
                             attendee_partner_ids.append(f"mailto:{partner.email}")
             params["nc_user_ids"] = nc_user_ids
-        return attendee_partner_ids, params
+        return list(set(attendee_partner_ids)), org_user_id, params
 
     def get_event_datetime(
-        self, nc_field, nc_value, vals, od_event=False, nc_event=False
+            self, nc_field, nc_value, vals, od_event=False, nc_event=False
     ):
         """
         This method will parse the Nextcloud event date,
@@ -425,7 +864,23 @@ class Nextcloudcaldav(models.AbstractModel):
                 if recurrence and key in ["DTSTART", "DTEND"]:
                     # Cannot get the calendar event for single recurring instance
                     # hence we revent to string manipulation of date
-                    return self.get_recurrence_id_date(nc_field, nc_value, od_event)
+                    event_date = nc_event.icalendar_component.get(key).dt
+                    tz = 'UTC'
+                    if isinstance(event_date, datetime):
+                        tz = event_date.tzinfo.zone
+                    date = parse(nc_value)
+                    if od_event and od_event.nextcloud_event_timezone and od_event.nextcloud_event_timezone == tz:
+                        dt_tz = pytz.timezone(tz).localize(date, is_dst=None)
+                        date = dt_tz.astimezone(pytz.utc)
+                    else:
+                        if tz != "UTC":
+                            date = date.astimezone(pytz.utc)
+                    value = nc_field[-1].split("=")[-1]
+                    if value == 'date':
+                        if nc_field[0].upper() == "DTEND":
+                            date = date - timedelta(days=1)
+                        return date.date()
+                    return date.replace(tzinfo=None)
                 elif key in nc_field[0].upper():
                     if "EXDATE" in key:
                         exdate_val = nc_event.icalendar_component.get(key)
@@ -437,7 +892,7 @@ class Nextcloudcaldav(models.AbstractModel):
                     else:
                         date = nc_event.icalendar_component.get(key).dt
                     if isinstance(date, datetime):
-                        tz = date.tzinfo and date.tzinfo.zone
+                        tz = date.tzinfo.zone
                         if tz != "UTC":
                             date = date.astimezone(pytz.utc)
                     elif isinstance(date, list):
@@ -448,7 +903,7 @@ class Nextcloudcaldav(models.AbstractModel):
                         for exdate in date:
                             for item in exdate.dts:
                                 date_data = item.dt
-                                tz = date_data.tzinfo and date_data.tzinfo.zone
+                                tz = date_data.tzinfo.zone
                                 if tz != "UTC":
                                     date_data = date_data.astimezone(pytz.utc)
                                 if all_day and isinstance(date_data, datetime):
@@ -458,11 +913,15 @@ class Nextcloudcaldav(models.AbstractModel):
                     else:
                         if key == "DTEND":
                             date = date - timedelta(days=1)
+                    value = nc_field[-1].split("=")[-1]
+                    if value == 'date' and isinstance(date, datetime):
+                        date = date.date()
+                    if isinstance(date, datetime):
+                        return date.replace(tzinfo=None)
+                    else:
                         return date
-                    return date.replace(tzinfo=None)
             return nc_value
         except Exception as e:
-            _logger.warning(e)
             return nc_value
 
     def get_recurrence_id_date(self, nc_field, nc_value, od_event_id):
@@ -477,11 +936,12 @@ class Nextcloudcaldav(models.AbstractModel):
         if "Z" in nc_value:
             nc_value = nc_value.replace("Z", "")
         date_value = parse(nc_value)
-        if od_event_id and od_event_id.allday and not isinstance(date_value, datetime):
-            data = date_value.date()
-        else:
-            data = self.convert_date(date_value, tz, "utc")
-        return data
+        if od_event_id and od_event_id.allday and isinstance(date_value, datetime):
+            return date_value.date()
+        # else:
+        #     data = self.convert_date(date_value, tz, "utc")
+
+        return date_value
 
     def manage_recurring_instance(self, event_dict, operation, vals):
         """
@@ -506,42 +966,60 @@ class Nextcloudcaldav(models.AbstractModel):
             prev_exdates = vevent.contents.pop("exdate", False)
             if prev_exdates:
                 exdates = prev_exdates[0].value
+                for index, item in enumerate(exdates):
+                    if not isinstance(item, datetime):
+                        exdates[index] = datetime.combine(item, datetime.min.time())
         if event_id.recurrence_id.nc_exdate:
             od_exdates = [
                 parse(x) for x in ast.literal_eval(event_id.recurrence_id.nc_exdate)
             ]
             [exdates.append(d) for d in od_exdates if d not in exdates]
         # Handle create and delete operation
-        if exdates:
-            recurring_event_ids = event_id.recurrence_id.calendar_event_ids
-            if operation == "create":
-                # Check for detached events in Odoo
-                detach_ids = recurring_event_ids.filtered(lambda x: x.nc_detach)
-                if detach_ids:
-                    detach_exdates = [parse(x.nc_rid) for x in detach_ids]
-                    [exdates.append(d) for d in detach_exdates if d not in exdates]
-                vals["exdate"] = exdates
-            if operation == "delete":
-                # Check if all instance of recurring events are for deletion
-                to_delete_ids = recurring_event_ids.filtered(lambda x: x.nc_to_delete)
-                if not to_delete_ids or len(to_delete_ids.ids) != len(
+        recurring_event_ids = event_id.recurrence_id.calendar_event_ids
+        if exdates and operation == "create":
+            # Check for detached events in Odoo
+            detach_ids = recurring_event_ids.filtered(lambda x: x.nc_detach and x.nc_rid)
+            if detach_ids:
+                detach_exdates = [parse(x.nc_rid) for x in detach_ids]
+                [exdates.append(d) for d in detach_exdates if d not in exdates]
+            vals["exdate"] = exdates
+        if operation == "delete":
+            # Check if all instance of recurring events are for deletion
+            to_delete_ids = recurring_event_ids.filtered(lambda x: x.nc_to_delete and x.nc_rid)
+            if not to_delete_ids or len(to_delete_ids.ids) == len(
                     event_id.recurrence_id.calendar_event_ids.ids
-                ):
-                    operation = "null"
+            ):
+                return event_id, operation, vals
+            else:
+                exdates.extend([parse(x.nc_rid) for x in to_delete_ids if x.nc_rid not in exdates])
+
         # Handle write operation by marking the existing caldav_event with exdate
         # then create a new caldav_event that is detached from recurring rule
-        if operation == "write" or event_id.nc_detach:
+        if operation == "write" and event_id.nc_detach:
             [vals.pop(x, False) for x in ["rrule", "uid", "exdate"] if x in vals]
-            exdate = parse(event_id.nc_rid)
-            if exdate not in exdates:
+            exdate = parse(event_id.nc_rid) if event_id.nc_rid else False
+            if exdate and exdate not in exdates:
                 exdates.append(exdate)
-                event_id.recurrence_id.nc_exdate = [
-                    x.strftime(date_format) for x in exdates
-                ]
+            event_id.recurrence_id.nc_exdate = [
+                x.strftime(date_format) for x in exdates
+            ]
+            operation = "create"
+        if operation == "write" and not event_id.nc_detach and event_id.recurrence_id.base_event_id == event_id:
             operation = "create"
         # Set the exdates value in the caldav_event
         if exdates and caldav_event:
-            caldav_event.icalendar_component.add("exdate", exdates)
+            for index, value in enumerate(exdates):
+                if isinstance(value,datetime):
+                    if not value.tzinfo:
+                        dt_tz = pytz.timezone(event_id.nextcloud_event_timezone or event_id.event_tz or 'UTC').localize(value, is_dst=None)
+                    else:
+                        dt_tz = value
+                    exdates[index] = dt_tz.date() if event_id.allday else dt_tz
+            exdates = list(set(exdates))
+            parameters = {"VALUE": "DATE" if event_id.allday else "DATE-TIME"}
+            if not event_id.allday:
+                parameters.update({"TZID": event_id.nextcloud_event_timezone or event_id.event_tz or 'UTC'})
+            caldav_event.icalendar_component.add("exdate", exdates,parameters=parameters)
             caldav_event.save()
         return event_id, operation, vals
 
@@ -587,13 +1065,20 @@ class Nextcloudcaldav(models.AbstractModel):
         elif not event_ids and "principal" in hash_vals:
             events_hash = hash_vals["events"]
             principal = hash_vals["principal"]
-            sync_user_id = hash_vals["sync_user_id"]
+            sync_user_id = self.env['nc.sync.user'].browse(hash_vals["nc_sync_user_id"])
             calendars = principal.calendars()
             all_user_events = []
             for calendar in calendars:
-                events = calendar.events()
+                if calendar.canonical_url not in sync_user_id.nc_calendar_ids.mapped(
+                        'calendar_url') and not calendar.canonical_url == sync_user_id.nc_calendar_id.calendar_url:
+                    continue
+                start_date = datetime.combine(sync_user_id.start_date or dtdate.today(), datetime.min.time())
+                events = calendar.search(
+                    start=start_date,
+                    event=True,
+                )
                 if events:
-                    all_user_events.extend(calendar.events())
+                    all_user_events.extend(events)
             for event in all_user_events:
                 nc_uid = event.vobject_instance.vevent.uid.value
                 if nc_uid in events_hash:
@@ -627,7 +1112,7 @@ class Nextcloudcaldav(models.AbstractModel):
         already deleted in Nextcloud
         :param event_id: single recordset of calendar.event model
         :param exdates: dictionary of event UID and EXDATE value from Nextcloud
-        :param all_odoo_event_ids: multiple recordset of alendar.event model
+        :param all_odoo_event_ids: multiple recordset of calendar.event model
         :return recordset: returns a new list of all_odoo_event_ids
                             where delete events were removed
         """
@@ -657,7 +1142,9 @@ class Nextcloudcaldav(models.AbstractModel):
         all_odoo_event_type_ids = params.get("all_odoo_event_type_ids", False)
         status_vals = params.get("status_vals", False)
         calendar_event = self.env["calendar.event"].sudo()
+        calendar_recurrence_obj = self.env["calendar.recurrence"].sudo()
         field_mapping = self.get_caldav_fields()
+        date_fields = ['dtstart', 'dtend', 'rrule', 'recurrence-id', 'last-modified']
         log_obj = params["log_obj"]
         user_id = sync_user_id.user_id
         user_name = sync_user_id.user_id.name
@@ -667,12 +1154,39 @@ class Nextcloudcaldav(models.AbstractModel):
         for operation in od_events_dict:
             for event in od_events_dict[operation]:
                 od_event_id = event["od_event"] if "od_event" in event else False
+                new_event_id = False
+                detach = event.get('detach',False)
+                if od_event_id and not od_event_id.exists():
+                    continue
+                    # Perform delete operation
+                try:
+                    if operation == "delete" and "od_event" in event and event["od_event"]:
+                        all_odoo_event_ids = all_odoo_event_ids - event["od_event"]
+                        event["od_event"].sudo().with_context(force_delete=True).unlink()
+                        params["delete_count"] += len(event["od_event"])
+                except Exception as e:
+                    message = (
+                            "Error deleting Odoo event '%s' for user '%s':\n"
+                            % (event["od_event"], user_name)
+                    )
+                    log_obj.log_event(
+                        mode="error",
+                        error=e,
+                        message=message,
+                        operation_type="delete",
+                    )
+                    params["error_count"] += 1
+                    continue
                 nc_event = event["nc_event"] if "nc_event" in event else False
                 caldav_event = event["nc_caldav"] if "nc_caldav" in event else False
                 event_hash = event["event_hash"]
                 exdates = {}
                 if nc_event:
                     for vevent in nc_event:
+                        if od_event_id and not od_event_id.exists():
+                            continue
+                        if operation == 'create' and new_event_id:
+                            od_event_id = new_event_id
                         vals = {"nc_uid": event["nc_uid"]}
                         nc_uid = event["nc_uid"]
                         all_day = False
@@ -681,11 +1195,13 @@ class Nextcloudcaldav(models.AbstractModel):
                         for e in vevent:
                             field = e.lower().split(";")
                             if field[0] in field_mapping or field[0] == "exdates":
-                                data = self.get_event_datetime(
-                                    field, vevent[e], vevent, od_event_id, caldav_event
-                                )
+                                data = vevent[e]
+                                if field[0] in date_fields:
+                                    data = self.get_event_datetime(
+                                        field, vevent[e], vevent, od_event_id, caldav_event
+                                    )
                                 if field[0] == "dtstart" and not isinstance(
-                                    data, datetime
+                                        data, datetime
                                 ):
                                     all_day = True
                                 if field[0] == "transp":
@@ -720,26 +1236,40 @@ class Nextcloudcaldav(models.AbstractModel):
                                         exdates[nc_uid].append(item)
                                     data = False
                                 elif field[0] == "recurrence-id" and data:
-                                    data = self.get_recurrence_id_date(
-                                        field, vevent[e], od_event_id
-                                    )
+                                    try:
+                                        data = self.get_recurrence_id_date(
+                                            field, vevent[e], od_event_id
+                                        )
+                                    except:
+                                        pass
                                     # Convert it back to string for matching
                                     # with nc_rid field of calendar.event model
                                     if isinstance(data, datetime):
                                         data = data.strftime("%Y%m%dT%H%M%S")
-                                    else:
+                                    elif isinstance(data, dtdate):
                                         data = data.strftime("%Y%m%d")
                                 if data:
                                     vals[field_mapping[field[0]]] = data
-
+                        if caldav_event.icalendar_component.get('DTSTART'):
+                            event_start_date = caldav_event.icalendar_component.get('DTSTART').dt
+                            tz = False
+                            if isinstance(event_start_date, datetime):
+                                tz = event_start_date.tzinfo.zone
+                            if tz:
+                                vals['nextcloud_event_timezone'] = tz
+                        if caldav_event.icalendar_component.get('X-NEXTCLOUD-BC-FIELD-TYPE'):
+                            vals['nextcloud_calendar_type'] = caldav_event.icalendar_component.get('X-NEXTCLOUD-BC-FIELD-TYPE')
                         if all_day:
                             vals["start_date"] = vals.pop("start")
                             vals["stop_date"] = vals.pop("stop")
+                        if detach:
+                            vals['recurrence_id'] = False
+                            vals['recurrency'] = False
                         # Populate the nc_calendar_ids field in Odoo
                         nc_calendar_id = all_nc_calendar_ids.filtered(
                             lambda x: x.calendar_url
-                            == caldav_event.parent.canonical_url
-                            and x.user_id == user_id
+                                      == caldav_event.parent.canonical_url
+                                      and x.user_id == user_id
                         )
                         if all_odoo_event_ids:
                             event_nc_calendar_ids = all_odoo_event_ids.filtered(
@@ -756,7 +1286,8 @@ class Nextcloudcaldav(models.AbstractModel):
                             new_nc_calendar_ids = []
                         if nc_calendar_id:
                             new_nc_calendar_ids.append(nc_calendar_id.id)
-                        vals["nc_calendar_ids"] = [(6, 0, new_nc_calendar_ids)]
+                        if vals.get('rrule',False):
+                            vals['nextcloud_rrule'] = vals.get('rrule')
                         # clear categ_ids when not present
                         if "categ_ids" not in vals:
                             vals["categ_ids"] = [(6, 0, [])]
@@ -770,22 +1301,38 @@ class Nextcloudcaldav(models.AbstractModel):
                         event_name = vals.get("name", "Untitled event")
                         vals.pop("write_date", False)
                         (
-                            attendee_partner_ids,
-                            params,
+                            attendee_partner_ids, organizer,
+                            params
                         ) = self.get_event_attendees(caldav_event, user_id, **params)
-                        hash_vals = {
+                        organizer_user_id = organizer[0].id if organizer else False
+                        hash_vals_list = [{
                             "nc_sync_user_id": sync_user_id.id,
                             "nc_event_hash": event_hash,
-                        }
+                        }]
+                        if organizer_user_id:
+                            nc_sync_user_id = self.env["nc.sync.user"].search(
+                                [("user_id", "=", organizer_user_id), ("sync_calendar", "=", True)], limit=1
+                            )
+                            if nc_sync_user_id != sync_user_id:
+                                nc_user_event_hash, nc_sync_user_calendar_id = (
+                                    nc_sync_user_id.get_nc_event_hash_by_uid_for_other_user(
+                                        nc_uid
+                                    )
+                                )
+                                hash_vals_list.append({
+                                    "nc_sync_user_id": nc_sync_user_id.id,
+                                    "nc_event_hash": nc_user_event_hash,
+                                })
+                                if nc_sync_user_calendar_id:
+                                    new_nc_calendar_ids.append(nc_sync_user_calendar_id.id)
+                        vals["nc_calendar_ids"] = [(6, 0, new_nc_calendar_ids)]
                         vals.update(
                             {
                                 "partner_ids": [(6, 0, attendee_partner_ids)],
                                 "allday": all_day,
                                 "nc_allday": all_day,
-                                "user_id": od_event_id.user_id.id
-                                if od_event_id
-                                else user_id.id,
                                 "nc_synced": True,
+                                "user_id": organizer_user_id
                             }
                         )
                         # Perform create operation
@@ -796,34 +1343,43 @@ class Nextcloudcaldav(models.AbstractModel):
                                 if "nc_rid" in vals and nc_uid:
                                     recurring_event_id = all_odoo_event_ids.filtered(
                                         lambda x: x.nc_uid == nc_uid
-                                        and x.nc_rid == vals["nc_rid"]
+                                                  and x.nc_rid == vals["nc_rid"]
                                     )
                                     if recurring_event_id:
-                                        recurring_event_id.write(vals)
+                                        recurring_event_id.with_context(sync_from_nextcloud=True).write(vals)
                                         self.update_attendee_invite(recurring_event_id)
-                                        self.update_event_hash(
-                                            hash_vals, recurring_event_id
-                                        )
+                                        for hash_vals in hash_vals_list:
+                                            self.update_event_hash(
+                                                hash_vals, recurring_event_id
+                                            )
                                         all_odoo_event_ids = self.delete_exempted_event(
                                             recurring_event_id,
                                             exdates,
                                             all_odoo_event_ids,
                                         )
                                 else:
-                                    vals["nc_hash_ids"] = [(0, 0, hash_vals)]
-                                    new_event_id = calendar_event.create(vals)
+                                    nc_hash_ids = []
+                                    for hash_vals in hash_vals_list:
+                                        nc_hash_ids.append((0, 0, hash_vals))
+                                    vals["nc_hash_ids"] = nc_hash_ids
+                                    context_dict = {'sync_from_nextcloud':True}
+                                    if caldav_event.icalendar_component.get('RELATED-TO'):
+                                        if 'until' in vals.get('nextcloud_rrule','').lower():
+                                            context_dict.update({'update_until': True})
+                                    new_event_id = calendar_event.with_context(context_dict).create(vals)
                                     if (
-                                        new_event_id.recurrence_id
-                                        and new_event_id.recurrence_id.calendar_event_ids
+                                            new_event_id.recurrence_id
+                                            and new_event_id.recurrence_id.calendar_event_ids
                                     ):
                                         recurring_event_ids = (
                                             new_event_id.recurrence_id.calendar_event_ids
                                         )
                                         all_odoo_event_ids |= recurring_event_ids
                                         self.update_attendee_invite(recurring_event_ids)
-                                        self.update_event_hash(
-                                            hash_vals, recurring_event_ids
-                                        )
+                                        for hash_vals in hash_vals_list:
+                                            self.update_event_hash(
+                                                hash_vals, recurring_event_ids
+                                            )
                                         all_odoo_event_ids = self.delete_exempted_event(
                                             new_event_id, exdates, all_odoo_event_ids
                                         )
@@ -841,8 +1397,8 @@ class Nextcloudcaldav(models.AbstractModel):
                                 params["create_count"] += 1
                             except Exception as e:
                                 message = (
-                                    "Error creating Odoo event '%s' for user '%s':\n"
-                                    % (event_name, user_name)
+                                        "Error creating Odoo event '%s' for user '%s':\n"
+                                        % (event_name, user_name)
                                 )
                                 log_obj.log_event(
                                     mode="error",
@@ -851,27 +1407,96 @@ class Nextcloudcaldav(models.AbstractModel):
                                     operation_type="create",
                                 )
                                 params["error_count"] += 1
-
+                            continue
                         # Perform write operation
                         if operation == "write" and od_event_id:
                             try:
-                                # Process exempted dates: these are deleted
-                                # recurring instance in Nextcloud
-                                all_odoo_event_ids = self.delete_exempted_event(
-                                    od_event_id, exdates, all_odoo_event_ids
-                                )
                                 # We don"t update if the event only contains
                                 # rrule but no nc_rid
                                 if "rrule" in vals and "nc_rid" not in vals:
-                                    self.update_event_hash(hash_vals, od_event_id)
+                                    if od_event_id.exists():
+                                        if od_event_id.recurrence_id.base_event_id == od_event_id:
+                                            update = self.check_recurrent_event_vals(od_event_id,vals)
+                                            if update:
+                                                recurrence_vals = vals
+                                                (od_event_id.recurrence_id.calendar_event_ids - od_event_id.recurrence_id.base_event_id).write(
+                                                    {'nc_uid': False})
+                                                recurrence_vals.update({'recurrence_update': 'all_events'})
+                                                recurring_events = od_event_id.recurrence_id.calendar_event_ids
+                                                context_dict = {'sync_from_nextcloud':True}
+                                                if (vals.get('nextcloud_rrule',
+                                                             False) and od_event_id.nextcloud_rrule != vals.get(
+                                                    'nextcloud_rrule')) or (od_event_id.allday and ((
+                                                        vals.get('start_date', False) and vals.get(
+                                                    'start_date') == od_event_id.start_date) or (vals.get('stop_date',
+                                                                                                          False) and vals.get(
+                                                    'stop_date') == od_event_id.stop_date))) or (
+                                                        not od_event_id.allday and ((
+                                                        vals.get('start', False) and vals.get(
+                                                    'start') == od_event_id.start) or (
+                                                                vals.get('stop', False) and vals.get(
+                                                            'stop') == od_event_id.stop))):
+                                                        recurrence_vals.update(
+                                                            {'nextcloud_rrule': vals['nextcloud_rrule']})
+                                                        recurrence_vals.update(
+                                                            {'rrule': vals['nextcloud_rrule']})
+                                                        recurrence_vals.update(calendar_recurrence_obj._rrule_parse(
+                                                            vals['nextcloud_rrule'], vals.get('start', od_event_id.start)))
+                                                        if (vals.get('nextcloud_rrule',
+                                                                 False) and od_event_id.nextcloud_rrule != vals.get(
+                                                            'nextcloud_rrule')) and 'until' in vals['nextcloud_rrule'].lower():
+                                                            context_dict.update({'update_until':True})
+                                                        context_dict.update({'update_nc_rid':True})
+                                                else:
+                                                    recurrence_vals.pop('rrule',None)
+                                                    recurrence_vals.pop('nextcloud_rrule',None)
+                                                od_event_id.recurrence_id.base_event_id.with_context(context_dict).write(
+                                                    recurrence_vals)
+                                                new_recurring_events = od_event_id.recurrence_id.calendar_event_ids
+                                                if not od_event_id.active:
+                                                    new_recurrence = calendar_recurrence_obj.search([('base_event_id','=',od_event_id.id)],limit=1)
+                                                    if new_recurrence:
+                                                        new_recurring_events = new_recurrence.calendar_event_ids.sorted(
+                                                            key=lambda r: r.start
+                                                        )
+                                                        if new_recurring_events:
+                                                            all_odoo_event_ids = all_odoo_event_ids - od_event_id
+                                                            recurring_events = recurring_events - od_event_id
+                                                            od_event_id.with_context(force_delete=True).unlink()
+                                                            new_recurrence.base_event_id = new_recurring_events[0].id
+                                                            od_event_id = new_recurring_events[0]
+                                                all_odoo_event_ids = self.update_recurring_events_in_all_events(new_recurring_events,recurring_events,all_odoo_event_ids)
+                                                if context_dict.get('update_nc_rid'):
+                                                    if not od_event_id.allday:
+                                                        start = od_event_id.start
+                                                        tz = od_event_id.nextcloud_event_timezone
+                                                        if tz:
+                                                            dt_tz = start.replace(tzinfo=pytz.utc)
+                                                            start = dt_tz.astimezone(
+                                                                pytz.timezone(tz))
+                                                            od_event_id.nc_rid = start.strftime("%Y%m%dT%H%M%S")
+                                                        else:
+                                                            od_event_id.nc_rid = od_event_id.nc_rid
+                                                    else:
+                                                        od_event_id.nc_rid = od_event_id.start.strftime("%Y%m%d")
+                                                for hash_vals in hash_vals_list:
+                                                    self.update_event_hash(
+                                                        hash_vals, new_recurring_events
+                                                    )
+                                        for hash_vals in hash_vals_list:
+                                            self.update_event_hash(hash_vals, od_event_id)
+                                    all_odoo_event_ids = self.delete_exempted_event(
+                                        od_event_id, exdates, all_odoo_event_ids
+                                    )
+                                    self.env.cr.commit()
                                     params["write_count"] += 1
                                     continue
                                 # Check if the event is part of recurring event
                                 elif (
-                                    "rrule" not in vals
-                                    and "nc_rid" in vals
-                                    and od_event_id
-                                    and od_event_id.recurrence_id
+                                        "rrule" not in vals
+                                        and "nc_rid" in vals
+                                        and od_event_id
+                                        and od_event_id.recurrence_id
                                 ):
                                     recurring_event_ids = (
                                         od_event_id.recurrence_id.calendar_event_ids
@@ -883,23 +1508,28 @@ class Nextcloudcaldav(models.AbstractModel):
                                         continue
                                     else:
                                         od_event_id = recurring_event_id
-                                od_event_id.write(vals)
-                                # Update the hash value of the Odoo event that
-                                # corresponds to the current user_id
-                                if od_event_id.recurrence_id:
-                                    od_event_id = (
-                                        od_event_id.recurrence_id.calendar_event_ids
-                                    )
+                                vals.pop('nextcloud_event_timezone',None)
+                                od_event_id.with_context(sync_from_nextcloud=True).write(vals)
+                                # # Update the hash value of the Odoo event that
+                                # # corresponds to the current user_id
+                                # if od_event_id.recurrence_id:
+                                #     od_event_id = (
+                                #         od_event_id.recurrence_id.calendar_event_ids
+                                #     )
                                 # Update hash values and attendee invite
                                 self.update_attendee_invite(od_event_id)
-                                self.update_event_hash(hash_vals, od_event_id)
+                                for hash_vals in hash_vals_list:
+                                    self.update_event_hash(hash_vals, od_event_id)
+                                all_odoo_event_ids = self.delete_exempted_event(
+                                    od_event_id, exdates, all_odoo_event_ids
+                                )
                                 # Commit the changes to the database
                                 self.env.cr.commit()
                                 params["write_count"] += 1
                             except Exception as e:
                                 message = (
-                                    "Error updating Odoo event '%s' for user '%s':\n"
-                                    % (event_name, user_name)
+                                            "Error updating Odoo event '%s' for user '%s':\n"
+                                        % (event_name, user_name)
                                 )
                                 log_obj.log_event(
                                     mode="error",
@@ -908,11 +1538,7 @@ class Nextcloudcaldav(models.AbstractModel):
                                     operation_type="write",
                                 )
                                 params["error_count"] += 1
-
-                # Perform delete operation
-                if operation == "delete" and "od_event" in event and event["od_event"]:
-                    event["od_event"].sudo().with_context(force_delete=True).unlink()
-                    params["delete_count"] += len(event["od_event"])
+        params["all_odoo_event_ids"] = all_odoo_event_ids
         return params
 
     def update_nextcloud_events(self, sync_user_id, nc_events_dict, **params):
@@ -940,15 +1566,18 @@ class Nextcloudcaldav(models.AbstractModel):
             recurrent_rule_ids[operation] = []
             prev_operation = operation
             for event in nc_events_dict[operation]:
+                current_operation = operation
                 event_id = event["od_event"]
+                if event_id and not event_id.exists():
+                    continue
                 caldav_event = event.get("nc_caldav", False)
                 vevent = False
                 if caldav_event:
                     vevent = caldav_event.vobject_instance.vevent
                 if event_id.recurrence_id:
                     if (
-                        event_id.recurrence_id in recurrent_rule_ids[operation]
-                        and not event_id.nc_detach
+                            event_id.recurrence_id in recurrent_rule_ids[operation]
+                            and not event_id.nc_detach
                     ):
                         continue
                     else:
@@ -957,7 +1586,7 @@ class Nextcloudcaldav(models.AbstractModel):
                             # sorting it by record id
                             event_ids = (
                                 event_id.recurrence_id.calendar_event_ids.sorted(
-                                    key=lambda r: r.id
+                                    key=lambda r: r.start
                                 )
                             )
                             event_id = calendar_event_obj.browse(event_ids.ids[0])
@@ -967,9 +1596,9 @@ class Nextcloudcaldav(models.AbstractModel):
                 # to Odoo fields with values
                 for field in field_mapping:
                     if (
-                        field not in fields
-                        or not event_id[field]
-                        or field in ["id", "write_date", "nc_rid"]
+                            field not in fields
+                            or not event_id[field]
+                            or field in ["id", "write_date", "nc_rid"]
                     ):
                         continue
                     value = event_id[field]
@@ -981,12 +1610,12 @@ class Nextcloudcaldav(models.AbstractModel):
                             }
                             vals[field_mapping[field]] = start_stop[field]
                         else:
-                            user_tz = sync_user_id.user_id.tz
+                            user_tz = event_id.nextcloud_event_timezone or sync_user_id.user_id.tz
                             vals[field_mapping[field]] = self.convert_date(
                                 value, user_tz, "local"
                             )
                     elif field == "partner_ids":
-                        attendees, params = self.get_event_attendees(
+                        attendees, organizer, params = self.get_event_attendees(
                             event_id, sync_user_id.user_id, **params
                         )
                     elif field == "description":
@@ -1012,6 +1641,8 @@ class Nextcloudcaldav(models.AbstractModel):
                         if value not in recurrent_rule_ids[operation]:
                             recurrent_rule_ids[operation].append(value)
                             rrule = self.get_rrule_dict(value._rrule_serialize())
+                            if rrule.get('UNTIL'):
+                                rrule.update({'UNTIL':parse(rrule.get('UNTIL'))})
                             vals[field_mapping[field]] = rrule
                     else:
                         vals[field_mapping[field]] = value
@@ -1029,10 +1660,15 @@ class Nextcloudcaldav(models.AbstractModel):
                     if event_nc_calendar_id:
                         nc_calendar_id = event_nc_calendar_id
 
-                if event_id.recurrence_id:
+                if event_id.recurrence_id or event_id.nc_rid:
                     event_id, operation, vals = self.manage_recurring_instance(
                         event, operation, vals
                     )
+                    if operation == 'null':
+                        params["create_count"] += len(
+                            event_id.recurrence_id.calendar_event_ids.filtered(lambda x: x.nc_to_delete))
+                        operation = current_operation
+                        continue
                 elif not event_id.recurrence_id and operation != prev_operation:
                     operation = prev_operation
 
@@ -1070,8 +1706,8 @@ class Nextcloudcaldav(models.AbstractModel):
                             )
                     except Exception as e:
                         message = (
-                            "Error creating Nextcloud event '%s' for user '%s':\n"
-                            % (event_name, user_name)
+                                "Error creating Nextcloud event '%s' for user '%s':\n"
+                                % (event_name, user_name)
                         )
                         log_obj.log_event(
                             mode="error",
@@ -1084,8 +1720,6 @@ class Nextcloudcaldav(models.AbstractModel):
                 # Perform write operation
                 if operation == "write" and caldav_event:
                     try:
-                        if "recurrence-id" in vals and "rrule" in vals:
-                            vals.pop("rrule")
                         # Check if there is a change in nc_calendar in Odoo
                         od_calendar_url = (
                             nc_calendar_id.calendar_url if nc_calendar_id else False
@@ -1141,16 +1775,18 @@ class Nextcloudcaldav(models.AbstractModel):
                         if "attendee" in vevent.contents:
                             vevent.contents.pop("attendee")
                         if attendees:
-                            caldav_event.parent.save_with_invites(
-                                caldav_event.icalendar_instance,
-                                attendees=attendees,
-                                schedule_agent="NONE",
-                            )
+                            for attendee in attendees:
+                                caldav_event.add_attendee(attendee)
+                            # caldav_event.parent.save_with_invites(
+                            #     caldav_event.icalendar_instance,
+                            #     attendees=attendees,
+                            #     schedule_agent="NONE",
+                            # )
                         params["write_count"] += 1
                     except Exception as e:
                         message = (
-                            "Error updating Nextcloud event '%s' for user '%s':\n"
-                            % (event_name, user_name)
+                                "Error updating Nextcloud event '%s' for user '%s':\n"
+                                % (event_name, user_name)
                         )
                         log_obj.log_event(
                             mode="error",
@@ -1168,15 +1804,7 @@ class Nextcloudcaldav(models.AbstractModel):
                             vevent.uid.value
                         )
                         # Update the Odoo event record
-                        res = {"nc_uid": vevent.uid.value, "nc_synced": True}
-                        if event_id.nc_detach:
-                            res.update(
-                                {
-                                    "recurrence_id": False,
-                                    "recurrency": False,
-                                    "nc_detach": False,
-                                }
-                            )
+                        res = {'nc_synced': True}
                         if "nc_hash_ids" not in res:
                             res["nc_hash_ids"] = []
                         event_nchash_id = event_id.nc_hash_ids.filtered(
@@ -1216,7 +1844,63 @@ class Nextcloudcaldav(models.AbstractModel):
                                         },
                                     )
                                 )
-                        event_id.write(res)
+
+                        if event_id.recurrence_id:
+                            hash_updated = False
+                            if not event_id.nc_detach and event_id.recurrence_id.base_event_id == event_id:
+                                if caldav_event.icalendar_component.get(
+                                        'DTSTART') and caldav_event.icalendar_component.get('RRULE'):
+                                    event_start_date = caldav_event.icalendar_component.get('DTSTART').dt
+                                    tz = False
+                                    if isinstance(event_start_date, datetime):
+                                        tz = event_start_date.tzinfo.zone
+                                    if tz:
+                                        if event_id.nextcloud_event_timezone != tz:
+                                            res['nextcloud_event_timezone'] = tz
+                                res['nextcloud_rrule'] = vevent.contents.get('rrule',False) and vevent.rrule.value or event_id.nextcloud_rrule or event_id.rrule
+                                event_id.recurrence_id.calendar_event_ids.with_context(sync_from_nextcloud=True).write(res)
+                                event_id.recurrence_id.calendar_event_ids.filtered(lambda x:not x.nc_hash_ids).write({'nc_hash_ids':[(
+                                    0 ,
+                                    0 ,
+                                    {
+                                        "nc_sync_user_id": sync_user_id.id,
+                                        "nc_event_hash": event_hash,
+                                    },
+                                )]})
+                                event_id.recurrence_id.calendar_event_ids.filtered(lambda x:not x.nc_uid).write({"nc_uid": vevent.uid.value})
+                                hash_updated = True
+                            if not hash_updated:
+                                event_vals = {"nc_uid": vevent.uid.value,"nc_hash_ids":res['nc_hash_ids']}
+                            else:
+                                event_vals = {}
+                            if event_id.nc_detach:
+                                if event_id.recurrence_id and event_id.recurrence_id.base_event_id == event_id:
+                                    new_base_event = (event_id.recurrence_id.calendar_event_ids - event_id).sorted(
+                                        key=lambda r: r.start
+                                    )
+                                    if new_base_event:
+                                        event_id.recurrence_id.base_event_id = new_base_event[0].id
+                                event_vals.update({
+                                        "recurrence_id": False,
+                                        "recurrency": False,
+                                        "nc_detach": False,
+                                    })
+                            event_id.with_context(sync_from_nextcloud=True).write(event_vals)
+                        else:
+                            res.update({"nc_uid": vevent.uid.value})
+                            if event_id.nc_detach:
+                                if event_id.recurrence_id and event_id.recurrence_id.base_event_id == event_id:
+                                    new_base_event = (event_id.recurrence_id.calendar_event_ids - event_id).sorted(
+                                        key=lambda r: r.start
+                                    )
+                                    if new_base_event:
+                                        event_id.recurrence_id.base_event_id = new_base_event[0].id
+                                res.update({
+                                        "recurrence_id": False,
+                                        "recurrency": False,
+                                        "nc_detach": False,
+                                    })
+                            event_id.with_context(sync_from_nextcloud=True).write(res)
                         # Commit the changes to the database since it is
                         # already been updated in Nextcloud
                         self.env.cr.commit()
@@ -1237,17 +1921,21 @@ class Nextcloudcaldav(models.AbstractModel):
                     try:
                         # Delete the event in Nextcloud first before deleting
                         # it in Odoo
-                        caldav_event.delete()
                         # Delete all Odoo events with the same nc_uid
                         # TODO: Handle deletion of specific instance of a
                         # recurring event where nc_uid are the same
-                        event_ids = params["all_odoo_event_ids"].filtered(
+                        all_events_with_nc_uid = params["all_odoo_event_ids"].filtered(
                             lambda x: x.nc_uid == event_id.nc_uid
+                        )
+                        to_delete_event_ids = all_events_with_nc_uid.filtered(
+                            lambda x: x.nc_to_delete
                         )
                         params["all_odoo_event_ids"] = params[
                             "all_odoo_event_ids"
-                        ].filtered(lambda x: x not in event_ids)
-                        event_ids.sudo().with_context(force_delete=True).unlink()
+                        ].filtered(lambda x: x not in to_delete_event_ids)
+                        if not (len(all_events_with_nc_uid) - len(to_delete_event_ids)):
+                            caldav_event.delete()
+                        to_delete_event_ids.sudo().with_context(force_delete=True).unlink()
                         # Commit the changes to the database since it is
                         # already been deleted in Nextcloud
                         self.env.cr.commit()
@@ -1276,16 +1964,16 @@ class Nextcloudcaldav(models.AbstractModel):
         sync_start = datetime.now()
         result = self.env["nc.sync.log"].log_event("pre_sync")
         log_obj = result["log_id"]
+        calendar_event_obj = self.env["calendar.event"]
         # To minimize impact on performance, search only once rather than
         # searching each loop
         params = {
             "log_obj": result["log_id"],
-            "all_odoo_event_ids": self.env["calendar.event"].search([]),
             "all_nc_calendar_ids": self.env["nc.calendar"].search(
                 [("user_id", "!=", False)]
             ),
             "all_user_ids": self.env["res.users"].search([]),
-            "all_sync_user_ids": self.env["nc.sync.user"].search([]),
+            "all_sync_user_ids": self.env["nc.sync.user"].search([("sync_calendar", "=", True)]),
             "all_partner_ids": self.env["res.partner"].search([("email", "!=", False)]),
             "all_odoo_event_type_ids": self.env["calendar.event.type"].search([]),
             "status_vals": {
@@ -1304,7 +1992,8 @@ class Nextcloudcaldav(models.AbstractModel):
             "delete_count": 0,
             "error_count": 0,
         }
-
+        if not per_user_id:
+            params["all_odoo_event_ids"] = calendar_event_obj.search([])
         if result["log_id"] and result["resume"]:
             sync_users_domain = [("sync_calendar", "=", True)]
             if per_user_id:
@@ -1312,7 +2001,11 @@ class Nextcloudcaldav(models.AbstractModel):
             sync_users = self.env["nc.sync.user"].search(sync_users_domain)
             for user in sync_users:
                 # Get all events from Odoo and Nextcloud
-                log_obj.log_event(message="Getting events for '%s'" % user.user_id.name)
+                # log_obj.log_event(message="Getting events for '%s'" % user.user_id.name)
+                if per_user_id:
+                    start_date = datetime.combine(user.start_date or dtdate.today(), datetime.min.time())
+                    params["all_odoo_event_ids"] = calendar_event_obj.search([('start', '>=', start_date)],
+                                                                             order="start")
                 events_dict = user.get_all_user_events(**params)
                 od_events = events_dict["od_events"]
                 nc_events = events_dict["nc_events"]
@@ -1320,28 +2013,28 @@ class Nextcloudcaldav(models.AbstractModel):
                 principal = events_dict["principal"]
                 if connection and principal:
                     params.update({"connection": connection, "principal": principal})
-                    # Compare all events
-                    log_obj.log_event(
-                        message="Comparing events for '%s'" % user["user_name"]
-                    )
+                    # # Compare all events
+                    # log_obj.log_event(
+                    #     message="Comparing events for '%s'" % user["user_name"]
+                    # )
                     od_events_dict, nc_events_dict = self.compare_events(
                         od_events, nc_events, user, log_obj
                     )
-                    # Log number of operations to do
-                    all_stg_events = {
-                        "Nextcloud": nc_events_dict,
-                        "Odoo": od_events_dict,
-                    }
-                    for stg_events in all_stg_events:
-                        message = "%s:" % stg_events
-                        for operation in all_stg_events[stg_events]:
-                            count = len(all_stg_events[stg_events][operation])
-                            message += " {} events to {},".format(count, operation)
-                        log_obj.log_event(message=message.strip(","))
+                    # # Log number of operations to do
+                    # all_stg_events = {
+                    #     "Nextcloud": nc_events_dict,
+                    #     "Odoo": od_events_dict,
+                    # }
+                    # for stg_events in all_stg_events:
+                    #     message = "%s:" % stg_events
+                    #     for operation in all_stg_events[stg_events]:
+                    #         count = len(all_stg_events[stg_events][operation])
+                    #         message += " {} events to {},".format(count, operation)
+                    #     log_obj.log_event(message=message.strip(","))
                     # Update events in Odoo and Nextcloud
-                    log_obj.log_event(message="Updating Odoo events")
+                    # log_obj.log_event(message="Updating Odoo events")
                     params = self.update_odoo_events(user, od_events_dict, **params)
-                    log_obj.log_event(message="Updating Nextcloud events")
+                    # log_obj.log_event(message="Updating Nextcloud events")
                     params = self.update_nextcloud_events(
                         user, nc_events_dict, **params
                     )
@@ -1386,7 +2079,6 @@ class Nextcloudcaldav(models.AbstractModel):
         :param nc_calendar: Calendar name (String)
         :return calendar_obj: Caldav calendar object
         """
-        principal_calendar_obj = False
         try:
             principal_calendar_obj = connection_principal.calendar(name=nc_calendar)
             principal_calendar_obj.events()
@@ -1409,7 +2101,7 @@ class Nextcloudcaldav(models.AbstractModel):
             except caldav.lib.error.NotFoundError as e:
                 _logger.warning("Error: %s" % e)
                 return client, {
-                    "sync_error_id": self.env.ref(
+                    "sync_error_id": self.sudo().env.ref(
                         "nextcloud_odoo_sync.nc_sync_error_1001"
                     ),
                     "response_description": str(e),
@@ -1417,18 +2109,18 @@ class Nextcloudcaldav(models.AbstractModel):
             except caldav.lib.error.AuthorizationError as e:
                 _logger.warning("Error: %s" % e)
                 return client, {
-                    "sync_error_id": self.env.ref(
+                    "sync_error_id": self.sudo().env.ref(
                         "nextcloud_odoo_sync.nc_sync_error_1000"
                     ),
                     "response_description": str(e),
                 }
             except (
-                caldav.lib.error.PropfindError,
-                requests.exceptions.ConnectionError,
+                    caldav.lib.error.PropfindError,
+                    requests.exceptions.ConnectionError,
             ) as e:
                 _logger.warning("Error: %s" % e)
                 return client, {
-                    "sync_error_id": self.env.ref(
+                    "sync_error_id": self.sudo().env.ref(
                         "nextcloud_odoo_sync.nc_sync_error_1001"
                     ),
                     "response_description": str(e),
@@ -1539,3 +2231,58 @@ class Nextcloudcaldav(models.AbstractModel):
                 dt_tz = dt.replace(tzinfo=pytz.utc)
                 dt_conv = dt_tz.astimezone(pytz.timezone(tz))
         return dt_conv
+
+    def update_recurring_events_in_all_events(self,new_recurring_events,recurring_events,all_odoo_event_ids):
+        for event in recurring_events:
+            if not event.exists():
+                all_odoo_event_ids = all_odoo_event_ids - event
+        for event in new_recurring_events:
+            if event not in all_odoo_event_ids:
+                all_odoo_event_ids = all_odoo_event_ids + event
+        return all_odoo_event_ids
+
+    def check_recurrent_event_vals(self, od_event_id, vals):
+        update = False
+        if vals.get('nextcloud_rrule', '') != od_event_id.nextcloud_rrule or vals.get('name',
+                                                                                      '') != od_event_id.name or vals.get(
+                'show_as', '') != od_event_id.show_as:
+            update = True
+        elif (vals.get('description', False) and vals.get('description') != od_event_id.description) or (
+                vals.get('location', False) and vals.get('location') != od_event_id.location):
+            update = True
+        if od_event_id.allday:
+            if (vals.get('start_date', False) and vals.get('start_date') != od_event_id.start_date) or (
+                    vals.get('stop_date', False) and vals.get('stop_date') != od_event_id.stop_date):
+                update = True
+        else:
+            if (vals.get('start', False) and vals.get('start') != od_event_id.start) or (
+                    vals.get('stop', False) and vals.get('stop') != od_event_id.stop):
+                update = True
+        if vals.get('alarm_ids', []):
+            new_vals = vals.get('alarm_ids')[0][2]
+            alarm_ids = od_event_id.alarm_ids.ids
+            if len(alarm_ids) != len(new_vals):
+                update = True
+            for rec in new_vals:
+                if rec not in alarm_ids:
+                    update = True
+                    break
+        if vals.get('categ_ids', []):
+            new_vals = vals.get('categ_ids')[0][2]
+            categ_ids = od_event_id.categ_ids.ids
+            if len(categ_ids) != len(new_vals):
+                update = True
+            for rec in new_vals:
+                if rec not in categ_ids:
+                    update = True
+                    break
+        if vals.get('partner_ids', []):
+            new_vals = vals.get('partner_ids')[0][2]
+            partner_ids = od_event_id.partner_ids.ids
+            if len(partner_ids) != len(new_vals):
+                update = True
+            for rec in new_vals:
+                if rec not in partner_ids:
+                    update = True
+                    break
+        return update

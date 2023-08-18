@@ -20,6 +20,7 @@
         "data/calendar_alarm_data.xml",
         "data/calendar_event_type_data.xml",
         "security/ir.model.access.csv",
+        "security/ir_rule.xml",
         "views/calendar_event_views.xml",
         "views/nc_sync_user_views.xml",
         "views/nc_sync_log_views.xml",
@@ -33,4 +34,5 @@
     "active": False,
     "auto_install": False,
     "application": True,
+    "uninstall_hook": "uninstall_hook",
 }

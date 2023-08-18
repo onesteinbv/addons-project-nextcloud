@@ -6,7 +6,9 @@
             <form>
                 <sheet>
                     <group>
-                        <span colspan="2">You're about to run NextCloud sync. Confirm?</span>
+                        <group>
+                            <span>You're about to run NextCloud sync. Confirm?</span>
+                        </group>
                     </group>
                 </sheet>
                 <footer>

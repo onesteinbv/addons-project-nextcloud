@@ -48,6 +48,8 @@
 				</div>
 				<field name="nc_calendar_ids" widget="many2many_tags" invisible="1"/>
 				<field name="nc_require_calendar" invisible="1"/>
+				<field name="nc_event_updateable" invisible="1"/>
+				<field name="nextcloud_calendar_type" invisible="1"/>
 			</field>
 
 			<field name="alarm_ids" position="replace">
@@ -68,6 +70,12 @@
 					Events created in Odoo is Public by default. Check Privacy in Options tab to change to Private otherwise.<br/>
 					The following reminders are not supported in Nextcloud and will not be synced: <i>Email - 3 Hours</i>, <i>Email - 6 Hours</i>
                 </div>
+				<div class="alert alert-info" role="alert" style="margin-bottom:0px;" attrs="{'invisible': ['|',('nc_event_updateable', '=', True),('nextcloud_calendar_type','!=',False)]}">
+					You cannot create/update nextcloud events for calendars other than default one
+                </div>
+				<div class="alert alert-info" role="alert" style="margin-bottom:0px;" attrs="{'invisible': ['|',('nc_event_updateable', '=', True),('nextcloud_calendar_type','=',False)]}">
+					You cannot update nextcloud events for Birthday calendars
+                </div>
 			</xpath>
       	</field>
 	</record>
@@ -75,6 +83,5 @@
 	<!-- Add domain filter to exclude events to be deleted in Nextcloud and Odoo -->
 	<record id="calendar.action_calendar_event" model="ir.actions.act_window">
 		<field name="domain">[('nc_to_delete', '=', False)]</field>
-		<field name="context">{}</field>
 	</record>
 </odoo>

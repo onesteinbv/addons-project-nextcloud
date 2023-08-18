@@ -5,6 +5,7 @@ from odoo import models, fields
 
 
 class ResPartner(models.Model):
+    _name = "res.partner"
     _inherit = "res.partner"
 
     nc_sync = fields.Boolean()
