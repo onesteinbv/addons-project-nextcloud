@@ -49,14 +49,20 @@
 							<field name="nextcloud_user_id" invisible="1"/>
 						</group>
 					</group>
-					<div class="alert alert-info" role="alert" attrs="{'invisible': [('nc_calendar_id', '=', False)]}">
+					<div class="alert alert-info" role="alert" attrs="{'invisible': ['|',('nc_email', '=', False),('nc_calendar_id', '=', False)]}">
 					  	<span>
 					  		<field name="user_message" readonly="1" force_save="1"/>
 					  	</span>
 					</div>
-					<div class="alert alert-info" role="alert" attrs="{'invisible': ['|',('nc_email', '!=', False),('user_has_calendar','=',False)]}">
+				<div class="alert alert-danger" role="alert" attrs="{'invisible': ['|',('nc_email', '!=', False),('nc_calendar_id','!=',False)]}">
 					  	<span>
-					  		Make sure you use the correct username to login. The Email field should be populated with your email
+					  		The connection attempt was unsuccessful. Ensure that you use the accurate username for connecting.
+							Make sure that your Nextcloud user is set up with a valid email address in order to establish a successful connection.
+					  	</span>
+					</div>
+					<div class="alert alert-info" role="alert" attrs="{'invisible': ['|',('nc_email', '=', False),('nc_calendar_id', '=', False)]}">
+					  	<span>
+					  		Please make sure that your Nextcloud user is set up with a valid email address in order to establish a successful connection.
 					  	</span>
 					</div>
 				</sheet>

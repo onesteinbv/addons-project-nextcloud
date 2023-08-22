@@ -106,6 +106,11 @@ class NcSyncUser(models.Model):
                 "new events"
             )
 
+    @api.onchange("user_name")
+    def onchange_user_name(self):
+        self.nc_email = False
+        self.sync_calendar = False
+
     @api.onchange("nc_calendar_ids")
     def onchange_nc_calendar_ids(self):
         if self.nc_calendar_id.id in self.nc_calendar_ids.ids:
@@ -216,6 +221,8 @@ class NcSyncUser(models.Model):
         user_data = self.env["nextcloud.base"].get_user(principal.client.username, self.nextcloud_url, self.user_name,
                                                         self.nc_password)
         self.nc_email = user_data.get("email", False) if user_data else False
+        if self.nc_email and self.nc_calendar_id:
+            self.sync_calendar = True
         return {"connection": connection, "principal": principal}
 
     def get_user_calendars(self, principal):

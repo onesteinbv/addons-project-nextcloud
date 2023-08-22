@@ -1479,6 +1479,23 @@ class Nextcloudcaldav(models.AbstractModel):
                                                             od_event_id.nc_rid = od_event_id.nc_rid
                                                     else:
                                                         od_event_id.nc_rid = od_event_id.start.strftime("%Y%m%d")
+                                                deleted_events = []
+                                                for new_recurring_event in new_recurring_events:
+                                                    same_event = calendar_event.search(
+                                                        [('nc_uid', '=', new_recurring_event.nc_uid),
+                                                         ('nc_rid', '=', new_recurring_event.nc_rid),
+                                                         ('id', '!=', new_recurring_event.id)], limit=1)
+                                                    if same_event:
+                                                        all_odoo_event_ids = all_odoo_event_ids.filtered(
+                                                            lambda x: x not in new_recurring_event
+                                                        )
+                                                        deleted_events.append(new_recurring_event)
+                                                        new_recurring_event.sudo().with_context(
+                                                            force_delete=True).unlink()
+                                                        continue
+                                                new_recurring_events = new_recurring_events.filtered(
+                                                            lambda x: x not in deleted_events
+                                                        )
                                                 for hash_vals in hash_vals_list:
                                                     self.update_event_hash(
                                                         hash_vals, new_recurring_events
@@ -1509,7 +1526,16 @@ class Nextcloudcaldav(models.AbstractModel):
                                     else:
                                         od_event_id = recurring_event_id
                                 vals.pop('nextcloud_event_timezone',None)
+                                calendar_recurrence = False
+                                if od_event_id.recurrence_id and od_event_id.recurrence_id.base_event_id == od_event_id:
+                                    calendar_recurrence = od_event_id.recurrence_id
                                 od_event_id.with_context(sync_from_nextcloud=True).write(vals)
+                                if calendar_recurrence and not od_event_id.recurrence_id:
+                                    recurring_events = calendar_recurrence.calendar_event_ids.sorted(
+                                        key=lambda r: r.start
+                                    )
+                                    if recurring_events:
+                                        calendar_recurrence.base_event_id = recurring_events[0].id
                                 # # Update the hash value of the Odoo event that
                                 # # corresponds to the current user_id
                                 # if od_event_id.recurrence_id:
