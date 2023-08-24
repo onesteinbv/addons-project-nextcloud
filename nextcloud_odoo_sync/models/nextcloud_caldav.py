@@ -995,7 +995,7 @@ class Nextcloudcaldav(models.AbstractModel):
 
         # Handle write operation by marking the existing caldav_event with exdate
         # then create a new caldav_event that is detached from recurring rule
-        if operation == "write" and event_id.nc_detach:
+        if operation == "write" and event_id.nc_detach and event_id.recurrence_id:
             [vals.pop(x, False) for x in ["rrule", "uid", "exdate"] if x in vals]
             exdate = parse(event_id.nc_rid) if event_id.nc_rid else False
             if exdate and exdate not in exdates:
