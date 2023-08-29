@@ -30,14 +30,35 @@ class NextcloudSync(models.Model):
     name = fields.Char('Name', required=True)
     api_url = fields.Char('API URL', default='/ocs/v1.php/cloud/users')
     hostname = fields.Char('Hostname', default='https://nctest.volendra.net')
-    username = fields.Char('Username', default='admin')
-    password = fields.Char('Password', default='D3f@ult101')
+    username = fields.Char('Username')
+    password = fields.Char('Password')
     json_output = fields.Boolean('JSON Output')
     calendar_event_id = fields.Many2one('calendar.event')
+    sync_user_id = fields.Many2one('nc.sync.user', 'Nextcloud User')
     event_count = fields.Integer('Event Count', default=10)
     event_count_display = fields.Integer(related='event_count')
 
     result_log = fields.Text('Result Log')
+    
+    @api.model
+    def default_get(self, fields):
+        res = super(NextcloudSync, self).default_get(fields)
+        res['api_url'] = '/ocs/v1.php/cloud/users'
+        res['hostname'] = self.env["ir.config_parameter"].sudo().get_param("nextcloud_odoo_sync.nextcloud_url")
+        return res
+
+    @api.onchange('sync_user_id')
+    def onchange_sync_user_id(self):
+        if self.sync_user_id:
+            self.username = self.sync_user_id.user_name
+            self.password = self.sync_user_id.nc_password
+            self.name = self.sync_user_id.user_name
+        else:
+            self.username = False
+            self.password = False
+            self.name = 'Test'
+            
+            
 
     def sync_cron_test(self):
         for rec in self:
@@ -201,16 +222,18 @@ class NextcloudSync(models.Model):
             self.result_log = f"Loaded {len(events)} Nextcloud event records\nStart Time: {datetime_opration_start.strftime('%Y-%m-%d %H:%M:%S')}\nEnd Time: {str(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))}\nDuration: {duration}"
 
     def delete_all_nextcloud_events(self):
+        """
+        This method deletes all event of the nextcloud user in the nextcloud server
+        """
         for rec in self:
             datetime_opration_start = datetime.now()
             start_time = ttime.time()
 
             with caldav.DAVClient(url=rec.hostname + '/remote.php/dav', username=rec.username, password=rec.password) as client:
-                my_principal = client.principal()
-                calendar_obj = my_principal.calendar(name="Personal")
-                event = calendar_obj.events()
-                for event_info in event:
-                    event_info.delete()
+                principal = client.principal()
+                for calendar in principal.calendars():
+                    for event in calendar.events():
+                        event.delete()
 
             end_time = ttime.time()
             elapsed = end_time - start_time
@@ -222,10 +245,10 @@ class NextcloudSync(models.Model):
         for rec in self:
             datetime_opration_start = datetime.now()
             start_time = ttime.time()
-
-            rec.calendar_event_id.search([], limit=rec.event_count).write({'active': False})
-            rec.env['nc.sync.user'].search([]).write({'user_events_hash': False})
-
+            if rec.sync_user_id:
+                calendar_event_ids = self.env['calendar.event'].search([('user_id','=',rec.sync_user_id.user_id.id)])
+                calendar_event_ids.sudo().nc_uid = False
+                calendar_event_ids.sudo().unlink()
             end_time = ttime.time()
             elapsed = end_time - start_time
             duration = round(elapsed, 2)

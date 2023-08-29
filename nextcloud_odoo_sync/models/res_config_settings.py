@@ -1,43 +1,35 @@
+# Copyright (c) 2023 iScale Solutions Inc.
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+
 from odoo import fields, models, api
 
 
 class ResConfigSettings(models.TransientModel):
-    _inherit = 'res.config.settings'
+    _inherit = "res.config.settings"
 
-    enable_calendar_sync = fields.Boolean("Enable Calendar Syc")
-    nextcloud_url = fields.Char(string="Server URL")
-    nextcloud_login = fields.Char(string="Login")
-    nextcloud_password = fields.Char(string="Password")
-    nextcloud_connection_status = fields.Selection([('online', 'Online'), ('fail', 'Failed to login')], "Connection Status")
-    nextcloud_error = fields.Text(string="Error")
+    log_capacity = fields.Integer(
+        string="Log Capacity",
+        default=7,
+        config_parameter="nextcloud_odoo_sync.log_capacity",
+    )
+    monthly_recurring_events_limit = fields.Integer(
+        string="Monthly Recurring Events Limit",
+        default=2,
+        config_parameter="nextcloud_odoo_sync.monthly_recurring_events_limit",
+    )
+    daily_recurring_events_limit = fields.Integer(
+        string="Daily Recurring Events Limit",
+        default=2,
+        config_parameter="nextcloud_odoo_sync.daily_recurring_events_limit",
+    )
+    weekly_recurring_events_limit = fields.Integer(
+        string="Weekly Recurring Events Limit",
+        default=2,
+        config_parameter="nextcloud_odoo_sync.weekly_recurring_events_limit",
+    )
+    yearly_recurring_events_limit = fields.Integer(
+        string="Yearly Recurring Events Limit",
+        default=10,
+        config_parameter="nextcloud_odoo_sync.yearly_recurring_events_limit",
+    )
 
-    @api.model
-    def set_values(self):
-        res = super(ResConfigSettings, self).set_values()
-        self.env['ir.config_parameter'].sudo().set_param('nextcloud_odoo_sync.enable_calendar_sync', self.enable_calendar_sync)
-        self.env['ir.config_parameter'].sudo().set_param('nextcloud_odoo_sync.nextcloud_url', self.nextcloud_url.strip("/"))
-        self.env['ir.config_parameter'].sudo().set_param('nextcloud_odoo_sync.nextcloud_login', self.nextcloud_login)
-        self.env['ir.config_parameter'].sudo().set_param('nextcloud_odoo_sync.nextcloud_password', self.nextcloud_password)
-
-        if self.env['ir.config_parameter'].sudo().get_param('nextcloud_odoo_sync.enable_calendar_sync'):
-            connection, connection_principal = self.env['nextcloud.caldav'].check_nextcloud_connection(url=self.nextcloud_url + '/remote.php/dav', username=self.nextcloud_login, password=self.nextcloud_password)
-            if isinstance(connection_principal, dict) and connection_principal.get('sync_error_id'):
-                self.env['ir.config_parameter'].sudo().set_param('nextcloud_odoo_sync.nextcloud_connection_status', 'fail')
-                self.env['ir.config_parameter'].sudo().set_param('nextcloud_odoo_sync.nextcloud_error', connection_principal.get('response_description'))
-            else:
-                self.env['ir.config_parameter'].sudo().set_param('nextcloud_odoo_sync.nextcloud_connection_status', 'online')
-                self.env['ir.config_parameter'].sudo().set_param('nextcloud_odoo_sync.nextcloud_error', False)
-        return res
-
-    @api.model
-    def get_values(self):
-        res = super(ResConfigSettings, self).get_values()
-        res.update(
-            enable_calendar_sync=self.env['ir.config_parameter'].sudo().get_param('nextcloud_odoo_sync.enable_calendar_sync'),
-            nextcloud_url=self.env['ir.config_parameter'].sudo().get_param('nextcloud_odoo_sync.nextcloud_url'),
-            nextcloud_login=self.env['ir.config_parameter'].sudo().get_param('nextcloud_odoo_sync.nextcloud_login'),
-            nextcloud_password=self.env['ir.config_parameter'].sudo().get_param('nextcloud_odoo_sync.nextcloud_password'),
-            nextcloud_connection_status=self.env['ir.config_parameter'].sudo().get_param('nextcloud_odoo_sync.nextcloud_connection_status'),
-            nextcloud_error=self.env['ir.config_parameter'].sudo().get_param('nextcloud_odoo_sync.nextcloud_error'),
-        )
-        return res
